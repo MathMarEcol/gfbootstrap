@@ -1,12 +1,19 @@
 Package: gfbootstrap
-Title: What the Package Does (One Line, Title Case)
-Version: 0.0.0.9000
+Title: Bootstrapping Gradient Forest Models
+Version: 0.0.0.9050
 Authors@R: 
-    person(given = "First",
-           family = "Last",
+    person(given = "Phil",
+           family = "Dyer",
            role = c("aut", "cre"),
-           email = "first.last@example.com")
-Description: What the package does (one paragraph).
+           email = "philip.dyer1@uqconnect.edu.au")
+Description: The base Gradient Forest package does not 
 License: What license it uses
 Encoding: UTF-8
 LazyData: true
+Depends:
+    future.apply
+Suggests: 
+    testthat,
+    gradientForest
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.0.2
