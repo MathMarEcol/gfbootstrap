@@ -171,10 +171,10 @@ gfbootstrap_dist <- function(gf_list,
       nrow = K,
       ncol = P
     )
+    offsets <- as.data.frame(offsets)
+    names(offsets) <- pred_vars
   }
 
-  offsets <- as.data.frame(offsets)
-  names(offsets) <- pred_vars
   ##generate pairs
   d_ij <- expand.grid(i = seq.int(K), j = seq.int(K))
 
@@ -495,6 +495,7 @@ compress_extrap_z <- function(x, p, a, b){
   return(z)
 
 }
+
 #' Predict bootstrapGradientForest
 #'
 #' Generic S3 function for predicting bootstrapGradientForest
@@ -719,6 +720,504 @@ unique(do.call("c", future.apply::future_lapply(obj$gf_list,
 #precede each use with "if(require(desiredR_ForgePackage))".  If
 #"require" returns TRUE, you do what you want.  Else issue an error message.
 
+
+#' Combine bootstrapped gradient forest objects
+#'
+#' As for gradientForest::combinedGradientForest(),
+#' takes two or more bootstrapGradientForest objects
+#' and combines them.
+#'
+#' Each bootStrapGradientForest object has many individual
+#' GF objects, and one GF model from each bootstrapGradientForest
+#' parameter is taken and used to create one sample in the
+#' combined bootstrapped Gradient Forest model.
+#'
+#' Each bootstrap sample in the combined bootstrapped Gradient Forest
+#' model is a combinedGradientForest object, with one GF model from
+#' each of the individual bootStrapGradientForest objects.
+#'
+#' The key difference to combinedGradientForest
+#' is that weights must be specified in this call,
+#' not at the predict.combinedGradientForest() call, 
+#' so offsets for each curve can be calculated now.
+#'
+combinedBootstrapGF <- function(...,
+                                n_samp,
+                                x_samples = 100,
+                                nbin = 101,
+                                method = 2,
+                                standardize = c("before", "after")[1],
+                                weight=c("uniform","species","rsq.total","rsq.mean","site","site.species","site.rsq.total","site.rsq.mean")[3]
+                                ) {
+  ##... are all the GF objects
+
+  std.options <- c("before","after")
+  #TODO: convert to assertthat syntax
+  if (is.na(std.option <- pmatch(standardize,std.options)))
+    stop(paste('Unmatched standardize value "',standardize,'". Expecting "before" or "after"',sep=""))
+  if (is.na(option <- pmatch(weight,c("uniform","species","rsq.total","rsq.mean","site","site.species","site.rsq.total","site.rsq.mean"))))
+    stop(paste('Unmatched weight "',weight,'". Expecting one of "uniform", "species", "rsq.total", "rsq.mean", "site", "site.species", "site.rsq.total" or "site.rsq.mean"',sep=""))
+
+  gf_list <- list(...)
+  n_gf <- length(gf_list)
+  if(!all(sapply(gf_list,inherits,"bootstrapGradientForest")))
+    stop("Every argument must be a gradientForest")
+
+  if(is.null(gf_names <- names(gf_list)))
+    gf_names <- paste("F",1:ngear,sep="")
+  if (any(empty <- gf_names==""))
+    gf_names[empty] <- paste("F",1:ngear,sep="")[empty]
+
+  names(gf_list) <- gf_names
+
+  n_gf_boot <- lapply(gf_list, function(gf){
+    length(gf$gf_list)
+  })
+
+  combin <- data.frame(lapply(n_gf_boot, function(n, n_samp){
+    sample.int(n, n_samp, replace = TRUE)
+  }, n_samp = n_samp) )
+
+  gf_combine <- apply(combin, 1, function(samp, gf_list, nbin, method, standardize){
+    gf_samp <- lapply(names(gf_list), function(gf, gf_list, samp){
+      gf_list[[gf]]$gf_list[[samp[gf]]]
+    }, gf_list = gf_list, samp = samp)
+    gf_samp$nbin <- nbin
+    gf_samp$method <- method
+    gf_samp$standardize <- standardize
+    gf_combined <- do.call(gradientForest::combinedGradientForest, gf_samp)
+    return(gf_combined)
+  }, gf_list = gf_list, nbin = nbin, method = method, standardize = standardize)
+
+  ##calculate the new offsets
+  gf_combine <- list(gf_list = gf_combine)
+  gf_combine$weight <- weight
+  class(gf_combine) <- c("combinedBootstrapGF", "list")
+
+  gf_combine_dist <- combine_gfbootstrap_dist(gf_combine, x_samples = x_samples)
+
+  gf_combine$offsets <- gfbootstrap_offsets(gf_combine_dist)
+
+  return(gf_combine)
+}
+
+#' Get predictor names from a combined gfbootstrap object
+#'
+#' Gradient Forest will drop variables that are
+#' never used in any splits. During bootstrapping,
+#' it is likely that at least one model drops a predictor.
+#'
+#' pred_names() searches all models and finds the
+#' full set of predictors, even if some models only
+#' use a subset.
+#'
+#' 
+pred_names_combined <- function(obj) {
+  unique(do.call("c", future.apply::future_lapply(obj$gf_list,
+                                                  function(x){
+                                                    ##now each is a combined GF
+                                                    names(x$CU)
+                                                  })
+                 ))
+}
+                                        #             (2) List it as "suggests" in your DESCRIPTION file and
+                                        #precede each use with "if(require(desiredR_ForgePackage))".  If
+                                        #"require" returns TRUE, you do what you want.  Else issue an error message.
+
+#' Combined gf_dist
+#'
+#' Calculate the distance between bootstrapped
+#' samples of combined gradientForest models.
+#'
+#'
+combine_gfbootstrap_dist <- function(gf_combine,
+                                     x_samples = 100){
+  assertthat::assert_that(inherits(gf_combine, "combinedBootstrapGF"))
+
+  pred_vars <- pred_names_combined(gf_combine) 
+  P <- length(pred_vars)
+  K <- length(gf_combine$gf_list)
+
+  if (!is.null(gf_combine$offsets)){
+      assertthat::assert_that(nrow(gf_combine$offsets) == K)
+      assertthat::assert_that(ncol(gf_combine$offsets) == P)
+  } else {
+      gf_combine$offsets <- as.data.frame(matrix(
+        rep.int(0, K * P),
+        nrow = K,
+        ncol = P))
+      names(gf_combine$offsets) <- pred_vars
+  }
+
+  ##generate pairs
+  d_ij <- expand.grid(i = seq.int(K), j = seq.int(K))
+
+  d_ij_diag <- d_ij[d_ij$i < d_ij$j, ]
+
+  ##for each pair, find area between curves
+  d_ij_pred <- do.call("rbind", future.apply::future_apply(d_ij_diag, 1, function(ind){
+    ind <- as.data.frame(t(ind))
+    i <- ind$i
+    j <- ind$j
+    assertthat::assert_that(inherits(gf_combine$gf_list[[i]], "combinedGradientForest"))
+    assertthat::assert_that(inherits(gf_combine$gf_list[[j]], "combinedGradientForest"))
+    tmp <- do.call("rbind",
+            future.apply::future_lapply(pred_vars, function(pred, gf_combine){
+              gf_list <- gf_combine$gf_list
+              ##calculate overlap
+              if (is.element(pred, names(gf_list[[i]]$CU)) ){
+                x_cumimp_i <- gradientForest::cumimp(gf_list[[i]], pred, weight = gf_combine$weight)$x
+              } else {
+                message(paste0("Combined Tree [", i,
+                               "], had no occurences of predictor [", pred,
+                               "]"))
+                return(data.frame(i, j, pred,  d=0))
+              }
+              if (is.element(pred, names(gf_list[[i]]$CU)) ){
+                x_cumimp_j <- gradientForest::cumimp(gf_list[[i]], pred, weight = gf_combine$weight)$x
+              } else {
+                message(paste0("Combined Tree [", j,
+                               "], had no occurences of predictor [", pred,
+                               "]"))
+                return(data.frame(i, j, pred,  d=0))
+              }
+
+              ## message(names(gf_list[[i]]$X))
+              ## message(names(gf_list[[j]]$X))
+              x_range <- c(max(
+                  min(x_cumimp_i),
+                  min(x_cumimp_j)
+                ),
+                min(
+                  max(x_cumimp_i),
+                  max(x_cumimp_j)
+                )
+                )
+              if(x_range[2] <= x_range[1]){
+
+                message(paste0("Combined Tree [", i,
+                               "] and Combined Tree [", j,
+                               "], for predictor [", pred,
+                               "] had no overlap in cumimp curves"))
+                return(data.frame(i, j, pred,  d=0))
+
+              }
+              ##predict x_samples points within overlapping ranges
+              x_sample_points <- data.frame(seq(x_range[1], x_range[2],
+                                                       length.out = x_samples))
+              names(x_sample_points) <- pred
+              ## message("i")
+              x_i <- gradientForest::predict.combinedGradientForest(gf_list[[i]],
+                                                            x_sample_points,
+                                                            extrap = FALSE,
+                                                            weight = gf_combine$weight)
+              ## message("i passed. j")
+              x_j <- gradientForest::predict.combinedGradientForest(gf_list[[j]],
+                                                            x_sample_points,
+                                                            extrap = FALSE,
+                                                            weight = gf_combine$weight)
+              ## message("j passed")
+              d <-  sum((x_i + gf_combine$offsets[pred][i,]) - (x_j + gf_combine$offsets[pred][j,]))
+              d <- d/x_samples
+              return(data.frame(i, j, pred, d))
+            }, gf_combine = gf_combine)
+            )
+    return(tmp)
+  })
+  )
+
+  ## fill in the lower triange, d_ji
+  ##take d_ij, and negate $d, swap i, j
+  d_ji <- data.frame(d_ij_pred$j,
+                     d_ij_pred$i,
+                     d_ij_pred$pred,
+                     -d_ij_pred$d)
+  names(d_ji) <- names(d_ij_pred)
+
+  d_ij_full <- rbind(d_ij_pred, d_ji)
+  return(d_ij_full)
+
+}
+
+#' plot cumimp for bootStrapGradientForest
+#'
+#' Returns a ggplot object, ready for plotting
+gg_combined_bootstrapGF <- function(x,
+                           vars = pred_names_combined(x),#names(importance(x$gf_list[[1]], type = "Weighted", sorted = TRUE)),
+                           n_curves = 10,
+                           debug = TRUE) {
+  assertthat::assert_that(inherits(x, "combinedBootstrapGF"))
+  assertthat::assert_that(is.vector(vars))
+  assertthat::assert_that(is.numeric(n_curves))
+  assertthat::assert_that(length(n_curves) == 1)
+
+  if (n_curves >= length(x$gf_list)) {
+    gf_ind <- seq_along(x$gf_list)
+  } else {
+    gf_ind <- sample.int(n = length(x$gf_list), size = n_curves)
+  }
+  ##for each predictor,
+  ##get curves from a subset of the gf objects
+  ##put into a table and plot
+  curve_groups <- expand.grid(vars, gf_ind)
+  curve_all <- do.call("rbind", future.apply::future_apply(curve_groups, 1, function(cg, x){
+    pred <- as.character(cg[1])
+    gf <- as.integer(cg[2])
+    
+    if (is.element(pred, names(x$gf_list[[gf]]$CU)) ){
+      curve_data <- gradientForest::cumimp(x$gf_list[[gf]], pred, weight = x$weight)
+    } else {
+      message(paste0("gg_combined_bootstrapgf: Tree [", gf,
+                     "], had no occurences of predictor [", pred,
+                     "]"))
+      return(data.frame(var = NULL, gf = NULL, x = NULL, y = NULL, stringsAsFactors = FALSE))
+    }
+    curve_data$y <- curve_data$y + x$offset[gf, pred]
+    return(data.frame(var = pred, gf = gf, x = curve_data$x, y = curve_data$y, stringsAsFactors = FALSE))
+
+  }, x = x)
+  )
+  if(debug){
+    curve_no_offset <- do.call("rbind", future.apply::future_apply(curve_groups, 1, function(cg, x){
+      pred <- as.character(cg[1])
+      gf <- as.integer(cg[2])
+      
+      if (is.element(pred, names(x$gf_list[[gf]]$CU)) ){
+        curve_data <- gradientForest::cumimp(x$gf_list[[gf]], pred, weight = x$weight)
+      } else {
+        message(paste0("gg_combined_bootstrapgf: Tree [", gf,
+                       "], had no occurences of predictor [", pred,
+                       "]"))
+        return(data.frame(var = NULL, gf = NULL, x = NULL, y = NULL, stringsAsFactors = FALSE))
+      }
+
+      return(data.frame(var = pred, gf = gf, x = curve_data$x, y = curve_data$y, stringsAsFactors = FALSE))
+
+    }, x = x)
+    )
+  }
+  if(debug){
+    return(list(
+      no_offset = ggplot2::ggplot(data = curve_no_offset, mapping = ggplot2::aes(x = x, y = y, group = gf, color = as.factor(gf))) +
+    ggplot2::geom_line() +
+  ggplot2::facet_wrap(ggplot2::vars(var), scales = "free_x"),
+  no_offset_stretch =  ggplot2::ggplot(data = curve_no_offset, mapping = ggplot2::aes(x = x, y = y, group = gf, color = as.factor(gf))) +
+    ggplot2::geom_line() +
+    ggplot2::facet_wrap(ggplot2::vars(var), scales = "free"),
+  offset = ggplot2::ggplot(data = curve_all, mapping = ggplot2::aes(x = x, y = y, group = gf, color = as.factor(gf))) +
+    ggplot2::geom_line() +
+    ggplot2::facet_wrap(ggplot2::vars(var), scales = "free_x"),
+  offset_stretch = ggplot2::ggplot(data = curve_all, mapping = ggplot2::aes(x = x, y = y, group = gf, color = as.factor(gf))) +
+    ggplot2::geom_line() +
+    ggplot2::facet_wrap(ggplot2::vars(var), scales = "free")
+  ))
+  }
+    return(
+      ggplot2::ggplot(data = curve_all, mapping = ggplot2::aes(x = x, y = y, group = gf, color = as.factor(gf))) +
+      ggplot2::geom_line() +
+      ggplot2::facet_wrap(ggplot2::vars(var), scales = "free_x")
+    )
+}
+
+#' Predict combinedBootstrapGF
+#'
+#' Generic S3 function for predicting combinedBootstrapGF
+#' objects.
+#'
+#' The behaviour is very similar to predict.gradientForest,
+#' but due to the way bootstrapGradientForest is intended
+#' to be used, an extra parameter, `type` is added.
+#'
+#' `type` is a vector containing elements from
+#' c("mean", "variance", "points", "weight")
+#'
+#' "mean" gives the unweighted mean of the points (default, for
+#' consistency with other predict functions)
+#'
+#' "variance" gives the unweighted variance of the points
+#'
+#' "points" returns all the points, so for each new x row,
+#' k (number of bootstrapped models) rows will be returned
+#'
+#' "weight" gives the R^2 performance of each bootstrapped model.
+#'
+#' Due to the fact that many rows of output can be returned
+#' for each row of input, x_row is included in the returned
+#' data.frame to match inputs to outputs.
+#'
+#' extrap can take on 2 values, c(TRUE, FALSE)
+#'
+#' extrap = TRUE extrapolates, but applies compression so predicted
+#' values approach an asymptote as X moves very far from training values.
+#' extrap_pow is only used with extrap = TRUE, and sets the
+#' compression power. 1/4 gives the 4th root, 1 is equivalent to linear extrapolation
+#' and 0 is equivalent to clipping to the maximum
+#'
+#'
+#' extrap = FALSE return Na outside of the training values. extrap = FALSE only uses
+#' models that observed the training data when calculating mean and variance
+#'
+#' ... arguments passed to cumimp
+#' If `type` contains more than one string, a list of
+#' data.frames will be returned, otherwise just a data.frame.
+#' 
+#' TODO: This code is rather spaghetti, eg. activity 4 depends on 2 and 3,
+#' then activity 5 depends on 1 and 4
+predict.combinedBootstrapGF <- function(object,
+                                            newdata,
+                                            type = c("mean"),
+                                            extrap=TRUE,
+                                            extrap_pow = 1/4,
+                                            ...){
+
+
+  assertthat::assert_that(inherits(object, "combinedBootstrapGF"))
+  assertthat::assert_that(extrap %in% c(TRUE, FALSE))
+  assertthat::assert_that(length(extrap) == 1)
+  if (missing(newdata)){
+    newdata <- object$gf_list[[1]]$X[,pred_names_combined(object)]
+  } else {
+    newnames <- names(newdata)
+    gf_preds <- pred_names_combined(object)
+    if(!all(ok <- newnames %in% gf_preds)) {
+      badnames <- paste(newnames[!ok], collapse=", ")
+      stop(paste("the following predictors are not in any of the bootstrapGradientForests:\n\t",badnames,sep=""))
+    }
+  }
+  assertthat::assert_that(inherits(newdata,"data.frame"))
+
+  ##Calculating means and variances requires all points anyway.
+
+
+  predict_groups <- expand.grid(newnames, seq_along(object$gf_list))
+  predict_all <- do.call("rbind", future.apply::future_apply(predict_groups, 1, function(cg, x){
+    pred <- as.character(cg[1])
+    gf <- as.integer(cg[2])
+    if (is.element(pred, names(x$gf_list[[gf]]$CU)) ){
+      curve_data <- gradientForest::cumimp(x$gf_list[[gf]], pred, weight = x$weight)
+    } else {
+      message(paste0("Tree [", gf,
+                     "], had no occurences of predictor [", pred,
+                     "]"))
+      return(data.frame(var = NULL, gf = NULL, x_row = NULL, x = NULL, y = NULL, stringsAsFactors = FALSE))
+    }
+    if(length(curve_data$x) < 2){
+      message(paste0("Not using Tree [", gf,
+                     "], it had only one occurences of predictor [", pred,
+                     "]: x = ", curve_data$x, "\n"))
+      return(data.frame(var = NULL, gf = NULL, x_row = NULL, x = NULL, y = NULL, stringsAsFactors = FALSE))
+    }
+    ##predictor exists
+    ## get the cumimp for the predictor: curve_data
+    ## figure out the range of the original data in x and y
+    x_model <- range(curve_data$x)
+    y_model <- range(curve_data$y)
+    ## figure out the range of the new data
+    ##   for x, just look at it
+    x_new <- range(newdata[,pred], na.rm = TRUE)
+    ## determine the range of the y data by either
+    ##   if "clip", just keep old y max and min
+    if (extrap) {
+      interp_method <- 2 #approxfun, set extremes to max y_model
+    } else {
+      interp_method <- 1 #approxfun, set extremes to na
+    }
+
+    if (extrap_pow == 0 || !extrap){
+      y_new <- y_model
+    } else {
+      ##   linearly extrapolate, using only the min and max of the new and old xy data
+      y_new <- y_model[1] + (x_new - x_model[1]) * diff(y_model)/diff(x_model)
+    }
+    ## add the new extremes to the cumimp vector
+    is_prepend <- FALSE
+    is_append <- FALSE
+    if(extrap) {
+      if (x_new[1] < x_model[1]) {
+        is_prepend <- TRUE
+        curve_data$x <- c(x_new[1], curve_data$x)
+        curve_data$y <- c(y_new[1], curve_data$y)
+      }
+      if (x_new[2] > x_model[2]) {
+        is_append <- TRUE
+        curve_data$x <- c(curve_data$x, x_new[2])
+        curve_data$y <- c(curve_data$y, y_new[2])
+      }
+    }
+    ## use approxfun to interpolate along the discretized cumimp vector
+    tmp_func <- approxfun(curve_data, rule = interp_method)
+    ## for all extrap != "na", get the linear interpolation and apply further processing
+    predicted <- tmp_func(newdata[,pred])
+    if (extrap) {
+      tmp_y <- predicted
+      tmp_x <- newdata[, pred]
+      ## from rphildyerphd::gf_extrap_compress
+      ## find gradient of slope
+      grad <- diff(y_model)/diff(x_model)
+      ## find range of cumimp: x_model, y_model
+      ## find points above the upper limit
+      is_upper <- tmp_x > x_model[2]
+      ## pass the points above the upper limit into compress_extrap_z
+      if(any(is_upper)) {
+        predicted[is_upper] <- compress_extrap_z(tmp_x[is_upper] - x_model[2], extrap_pow, grad, y_model[2])
+      }
+      ## repeat for points below the lower limit
+      is_lower <- tmp_x < x_model[1]
+      if(any(is_lower)) {
+        predicted[is_lower] <- -compress_extrap_z(-(tmp_x[is_lower] - x_model[1]), extrap_pow, grad, -y_model[1])
+      }
+    }
+    ##apply offset
+    predicted_offset <- predicted + x$offset[gf, pred]
+    ## repeat for all models in the set
+    ## with all the results, calculate and return statistics.
+
+
+    return(data.frame(var = pred, gf_model = gf, x_row = seq_along(newdata[,pred]), x = newdata[,pred], y = predicted_offset, stringsAsFactors = FALSE))
+
+  }, x = object)
+  )
+
+  ##Now generate summary results
+  ##tidyverse style
+  out <- data.frame(type = NA, var = NA, x_row = NA, x = NA, y = NA, gf_model = NA)[numeric(0), ]
+  all_opts <- c("mean", "variance", "points", "weight")
+  if ("mean" %in% type){
+    out <- rbind(out, do.call("rbind", future.apply::future_by(predict_all,
+                            list(var = predict_all$var,
+                                 x_row = predict_all$x_row),
+                            function(x) {
+                              data.frame(type = "mean", var = unique(x$var), x_row = unique(x$x_row), x = unique(x$x),
+                                         y = mean(x$y), gf_model = NA)
+                            }
+
+                            ))
+    )
+  }
+  if ("variance" %in% type){
+    out <- rbind(out, do.call("rbind", future.apply::future_by(predict_all,
+                            list(var = predict_all$var,
+                                 x_row = predict_all$x_row),
+                            function(x) {
+                              data.frame(type = "variance",var = unique(x$var), x_row  = unique(x$x_row), x = unique(x$x),
+                                         y = var(x$y), gf_model = NA)
+                            }
+      ))
+    )
+  }
+  if ("points" %in% type){
+    out <- rbind(out, data.frame(type = "points", predict_all[,c("var", "x_row", "x", "gf_model")],
+                          y = predict_all$y)
+    )
+  }
+  # if("weight" %in% type){
+  #   out["weight"] <- object$gf_list[[1]]
+  # }
+
+  return(out)
+
+}
+
 aff_func <- function(x, u, sim_mat){
   ##Takes the vector x of rows and the row u of sim_match
   ##and returns the affinity from u to x
@@ -753,12 +1252,14 @@ cast_alg <- function(sim_mat, aff_thres){
       
       ##find initial cluster point
       if(all(!new_clust)){
+
         maxima <- which(spares)
         new_elem <- maxima[sample.int(length(maxima), 1)] ##intention: take one of the max at random
         new_clust[new_elem] <- TRUE
         spares[new_elem] <- FALSE
         is_change <- TRUE
         debug_spares_expected <- debug_spares_expected - 1
+        ## print(list(new_elem, sum(spares), debug_spares_expected, "first"))
         assertthat::assert_that(debug_spares_expected == sum(spares))
         ##update aff_local
         ## aff_local[new_clust | spares] <- aff_local[new_clust | spares] + aff_func(new_clust | spares, new_elem, sim_mat)
