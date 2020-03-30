@@ -1477,11 +1477,10 @@ cast_h_reorder <- function(cast_h_obj, depth = length(cast_h_obj), reordering = 
 #' not fit it memory. However, the matrix becomes
 #' sparse, as k increases, so long form should always work.
 membership_mat <- function(cast_ob, is_long = FALSE){
-  n_sites <- do.call(sum, lapply(cast_ob, sum))
+  n_sites <- do.call(sum, lapply(cast_ob, length))
 
   mat_long  <-do.call(rbind, lapply(cast_ob, function(clust){
-    sites <- which(clust)
-    mat_long_clust <- expand.grid(sites, sites)
+    mat_long_clust <- expand.grid(clust, clust)
     return(mat_long_clust)
   })
   )
