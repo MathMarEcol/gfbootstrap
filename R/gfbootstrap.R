@@ -1272,11 +1272,12 @@ cast_alg <- function(sim_mat, aff_thres){
 
       ##Short-circuit evaluation, won't try to find max of an empty set
       while(any(spares) && (max(aff_local[spares]) >= aff_thres*mean(aff_local[new_clust]))){
-        maxima <- which(aff_local == max(aff_local[spares]))
+        maxima <- which(aff_local == max(aff_local[spares]) & spares)
         new_elem <- maxima[sample.int(length(maxima), 1)] ##intention: take one of the max at random
         new_clust[new_elem] <- TRUE
         spares[new_elem] <- FALSE
         debug_spares_expected <- debug_spares_expected - 1
+        ## print(list(new_elem, sum(spares), debug_spares_expected, "add"))
         assertthat::assert_that(debug_spares_expected == sum(spares))
         is_change <- TRUE
         ##update aff_local
@@ -1286,11 +1287,12 @@ cast_alg <- function(sim_mat, aff_thres){
 
       ##Removal stage
       while(any(new_clust) && (min(aff_local[new_clust]) < aff_thres*mean(aff_local[new_clust]))){
-        minima <- which(aff_local == min(aff_local[new_clust]))
+        minima <- which(aff_local == min(aff_local[new_clust]) & new_clust)
         new_elem <- minima[sample.int(length(minima), 1)] ##intention: take one of the max at random
         new_clust[new_elem] <- FALSE
         spares[new_elem] <- TRUE
         debug_spares_expected <- debug_spares_expected + 1
+        ## print(list(new_elem, sum(spares), debug_spares_expected, "remove"))
         assertthat::assert_that(debug_spares_expected == sum(spares))
         is_change <- TRUE
         ##update aff_local
