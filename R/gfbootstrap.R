@@ -1305,7 +1305,7 @@ cast_alg <- function(sim_mat, aff_thres){
     }
 
     assertthat::assert_that(debug_spares_expected == (debug_spares_loop - sum(new_clust)))
-    clust[[clust_id]] <- new_clust
+    clust[[clust_id]] <- which(new_clust)
     clust_id <- clust_id + 1
 
 
@@ -1325,14 +1325,14 @@ cast_stabilize <- function(cast_obj, aff_thres, sim_mat, max_iter = 20){
     ##This approach tests each site, and updates clustering at end
     updates <- lapply(seq_along(cast_obj[[1]]), function(u, cast_obj, sim_mat){
       clust_id <- which(sapply(cast_obj, function(clust, u){
-        clust[u]
+        u %in% clust
       }, u = u))
       assertthat::assert_that(length(clust_id) == 1)
       ##u belongs to clust_id
       clust_aff <- lapply(cast_obj, function(clust, u, sim_mat){
           ##get the affinity to each cluster
           if(any(clust)){
-            return(mean(aff_func(clust, u, sim_mat)[clust]))
+            return(mean(sim_mat[u, clust]))
           } else {
             ##empty clusters have 0 affinity
             return(0)
@@ -1349,8 +1349,8 @@ cast_stabilize <- function(cast_obj, aff_thres, sim_mat, max_iter = 20){
     if(!is.null(updates)){
       message("iteration [", iter, "] reassigned [", nrow(updates),"] samples")
       for(upd in 1:nrow(updates) ){
-        cast_obj[[updates[upd,"old"]]][updates[upd,"u"]] <- FALSE
-        cast_obj[[updates[upd,"new"]]][updates[upd,"u"]] <- TRUE
+        cast_obj[[ updates[upd,"old"] ]] <- cast_obj[[ updates[upd,"old"] ]][cast_obj[[ updates[upd,"old"] ]] != updates[upd,"u"]  ] 
+        cast_obj[[updates[upd,"new"]]] <- c(cast_obj[[updates[upd,"new"]]], updates[upd,"u"])
       }
     } else {
       break
@@ -1364,10 +1364,9 @@ cast_stabilize <- function(cast_obj, aff_thres, sim_mat, max_iter = 20){
 ##returns a list
 aff_clust_inner <- function(cast_obj, sim_mat){
   lapply(seq_along(cast_obj), function(clust, cast_obj, sim_mat){
-    elems <- cast_obj[[clust]]
-    elem_cor <- sim_mat[elems,elems]
-    if(sum(elems) > 1){
-      elems_mean_aff <- rowSums(elem_cor)/sum(elems)
+    elem_cor <- sim_mat[clust,clust]
+    if(length(clust) > 1){
+      elems_mean_aff <- rowSums(elem_cor)/length(clust)
       mean_aff <- mean(elems_mean_aff)
     } else {
       mean_aff <- elem_cor
@@ -1385,8 +1384,8 @@ aff_cluster_between <- function(cast_obj, sim_mat){
   affs <- apply(pairs, 1, function(p, cast_obj, sim_mat){
     elems_a <- cast_obj[[p[1]]]
     elems_b <- cast_obj[[p[2]]]
-    if(sum(elems_a) > 1 && sum(elems_b) > 1){
-      return(mean(rowSums(sim_mat[elems_a, elems_b])/sum(elems_b)))
+    if(length(elems_a) > 1 && length(elems_b) > 1){
+      return(mean(rowSums(sim_mat[elems_a, elems_b])/length(elems_b)))
     } else {
       return(mean(sim_mat[elems_a, elems_b]))
     }
@@ -1408,10 +1407,10 @@ aff_cluster_between <- function(cast_obj, sim_mat){
 ##returns a data.frame with site, cluster, affinity
 predict_clust <- function(cast_obj, new_sim_mat){
   do.call("rbind", lapply(1:length(cast_obj), function(clust, cast_obj, new_sim_mat){
-    if(sum(cast_obj[[clust]]) > 1){
+    if(length(cast_obj[[clust]]) > 1){
       return(data.frame(x_row = 1:nrow(new_sim_mat),
                         clust = clust,
-                        aff = rowSums(new_sim_mat[, cast_obj[[clust]]])/sum(cast_obj[[clust]])))
+                        aff = rowSums(new_sim_mat[, cast_obj[[clust]]])/length(cast_obj[[clust]])))
     } else {
       return(data.frame(x_row = 1:nrow(new_sim_mat),
                         clust = clust,
@@ -1456,7 +1455,7 @@ cast_h_reorder <- function(cast_h_obj, depth = length(cast_h_obj), reordering = 
     reordering <- 1:length(cast_h_obj[[1]]$clust)
   }
   layers <- seq(1, depth )
-  reordered <- do.call("c", lapply(cast_h_obj[[1]]$clust[reordering], which))
+  reordered <- do.call("c", cast_h_obj[[1]]$clust[reordering])
   if(depth > 1){
     return(cast_h_reorder(cast_h_obj[-1], depth = depth - 1, reordering = reordered))
   } else {
