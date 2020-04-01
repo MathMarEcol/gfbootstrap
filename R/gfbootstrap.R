@@ -1591,7 +1591,8 @@ membership_mat <- function(cast_ob, is_long = FALSE){
 #' @param sim_mat must be a square matrix equivalent,
 #' @param 
 hubert_gamma <- function(sim_mat, member_mat, norm_z = TRUE){
-  assertthat::assert_that(all(dim(sim_mat) == dim(member_mat)))
+  assertthat::assert_that(dim(sim_mat)[1] == dim(member_mat)[1])
+  assertthat::assert_that(dim(sim_mat)[2] == dim(member_mat)[2])
 
   if(norm_z){
     mean_s <- mean(sim_mat)
