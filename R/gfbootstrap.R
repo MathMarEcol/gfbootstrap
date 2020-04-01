@@ -1311,18 +1311,21 @@ cast_alg <- function(sim_mat, aff_thres){
     debug_spares_loop <- sum(spares)
     debug_spares_expected <- debug_spares_loop
     new_clust <- rep(FALSE, n)
+    valid_seeds <- spares
 
     aff_local <- rep(0, n)
 
     ##Do the next steps until stability is reached
     repeat{
       is_change <- FALSE
-      
+
+
+
       ##find initial cluster point
       if(all(!new_clust)){
-
-        maxima <- which(spares)
+        maxima <- which(spares & valid_seeds)
         new_elem <- maxima[sample.int(length(maxima), 1)] ##intention: take one of the max at random
+        next_seed <- new_elem
         new_clust[new_elem] <- TRUE
         spares[new_elem] <- FALSE
         is_change <- TRUE
@@ -1367,11 +1370,24 @@ cast_alg <- function(sim_mat, aff_thres){
         aff_local <- aff_local - aff_func(new_clust | spares, new_elem, sim_mat)
       }
 
+      if(all(!new_clust)){
+        ##cluster is empty
+        valid_seeds[next_seed] <- FALSE
+        message("seeds left: [", sum(valid_seeds), "]")
+        if(all(!valid_seeds)){
+          ##no more valid seeds exist, all have been tried, create a leftovers cluster
+          new_clust <- spares
+          spares <- rep(FALSE, n)
+          break
+        }
+      }
+
       if(!is_change){
         break
       }
     }
-
+    message("cluster assigned of size [", sum(new_clust), "]")
+    message("[", sum(spares), "] sites left to assign.")
     assertthat::assert_that(debug_spares_expected == (debug_spares_loop - sum(new_clust)))
     clust[[clust_id]] <- which(new_clust)
     clust_id <- clust_id + 1
@@ -1381,6 +1397,7 @@ cast_alg <- function(sim_mat, aff_thres){
 
   return(clust)
 }
+
 
 
 cast_stabilize <- function(cast_obj, aff_thres, sim_mat, max_iter = 20){
