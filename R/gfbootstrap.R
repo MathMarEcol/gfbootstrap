@@ -1428,6 +1428,186 @@ cast_stabilize <- function(cast_obj, aff_thres, sim_mat, max_iter = 20){
   return(cast_obj)
 }
 
+
+#' Two functions that extend cast to reduce the
+#' number of clusters
+#'
+#' cast_alg_cautious stabilizes the matrix after every cluster is added,
+#' so we don't create a lot of small clusters on the edges.
+#' I expect to use all the sites faster.
+#'
+#' cast_compact takes a stabilized cast object, and deletes
+#' one cluster, assignes the sites to nearest clusters,
+#' stabilizes again, and
+#' checks whether the average cluster affinity
+#' remains above the threshold. If the threshold is still valid,
+#' keep the changed cast algorithm, otherwise revert and try another cluster.
+cast_alg_cautious <- function(sim_mat, aff_thres, max_iter = 20){
+##rather than wrestle with integer sets, I will use boolean vectors
+  
+  ##initialise, no clusters, and all elements belong to no clusters
+  n <- nrow(sim_mat)
+  clust <- list()
+  spares <- rep(TRUE, n)
+  
+  clust_id <- 1
+  ##now we keep working until spares is all false
+  while(any(spares)) {
+    debug_spares_loop <- sum(spares)
+    debug_spares_expected <- debug_spares_loop
+    new_clust <- rep(FALSE, n)
+    valid_seeds <- spares
+
+    aff_local <- rep(0, n)
+
+    ##Do the next steps until stability is reached
+    repeat{
+      is_change <- FALSE
+
+
+
+      ##find initial cluster point
+      if(all(!new_clust)){
+        maxima <- which(spares & valid_seeds)
+        new_elem <- maxima[sample.int(length(maxima), 1)] ##intention: take one of the max at random
+        next_seed <- new_elem
+        new_clust[new_elem] <- TRUE
+        spares[new_elem] <- FALSE
+        is_change <- TRUE
+        debug_spares_expected <- debug_spares_expected - 1
+        ## print(list(new_elem, sum(spares), debug_spares_expected, "first"))
+        assertthat::assert_that(debug_spares_expected == sum(spares))
+        ##update aff_local
+        ## aff_local[new_clust | spares] <- aff_local[new_clust | spares] + aff_func(new_clust | spares, new_elem, sim_mat)
+        aff_local <- aff_local + aff_func(new_clust | spares, new_elem, sim_mat)
+      }
+
+      ##addition stage
+      ##affinity seems to be used to bias group size
+      ##Strong affinity is needed to join a large group
+
+      ##Short-circuit evaluation, won't try to find max of an empty set
+      while(any(spares) && (max(aff_local[spares]) >= aff_thres*mean(aff_local[new_clust]))){
+        maxima <- which(aff_local == max(aff_local[spares]) & spares)
+        new_elem <- maxima[sample.int(length(maxima), 1)] ##intention: take one of the max at random
+        new_clust[new_elem] <- TRUE
+        spares[new_elem] <- FALSE
+        debug_spares_expected <- debug_spares_expected - 1
+        ## print(list(new_elem, sum(spares), debug_spares_expected, "add"))
+        assertthat::assert_that(debug_spares_expected == sum(spares))
+        is_change <- TRUE
+        ##update aff_local
+        ## aff_local[new_clust | spares] <- aff_local[new_clust | spares] + aff_func(new_clust | spares, new_elem, sim_mat)
+        aff_local <- aff_local + aff_func(new_clust | spares, new_elem, sim_mat)
+      }
+
+      ##Removal stage
+      while(any(new_clust) && (min(aff_local[new_clust]) < aff_thres*mean(aff_local[new_clust]))){
+        minima <- which(aff_local == min(aff_local[new_clust]) & new_clust)
+        new_elem <- minima[sample.int(length(minima), 1)] ##intention: take one of the max at random
+        new_clust[new_elem] <- FALSE
+        spares[new_elem] <- TRUE
+        debug_spares_expected <- debug_spares_expected + 1
+        ## print(list(new_elem, sum(spares), debug_spares_expected, "remove"))
+        assertthat::assert_that(debug_spares_expected == sum(spares))
+        is_change <- TRUE
+        ##update aff_local
+        aff_local <- aff_local - aff_func(new_clust | spares, new_elem, sim_mat)
+      }
+
+      if(all(!new_clust)){
+        ##cluster is empty
+        valid_seeds[next_seed] <- FALSE
+        message("seeds left: [", sum(valid_seeds), "]")
+        if(all(!valid_seeds)){
+          ##no more valid seeds exist, all have been tried, create a leftovers cluster
+          new_clust <- spares
+          spares <- rep(FALSE, n)
+          break
+        }
+      }
+
+      if(!is_change){
+        break
+      }
+    }
+
+
+
+    message("cluster assigned of size [", sum(new_clust), "]")
+    message("[", sum(spares), "] sites left to assign.")
+    assertthat::assert_that(debug_spares_expected == (debug_spares_loop - sum(new_clust)))
+
+    ##now, stabilize the clusters.
+    clust[[clust_id]] <- which(new_clust)
+    if(any(spares)){
+      clust[[clust_id + 1]] <- which(spares)
+    }
+    clust <- cast_stabilize(cast_obj = clust, aff_thres = aff_thres, sim_mat = sim_mat, max_iter = max_iter)
+    if(any(spares)){
+      spares <- rep(FALSE, n)
+      spares[clust[[clust_id +1]] ] <- TRUE
+    }
+    message("[", sum(spares), "] sites left to assign after stabilize step.")
+    clust_id <- clust_id + 1
+  }
+
+  return(clust)
+}
+cast_compact <- function(cast_ob, sim_mat, aff_thres, max_iter = 20){
+  ##sort by size
+  cluster_size <- data.frame(clust = 1:length(cast_ob), size = sapply(cast_ob, length))
+  cluster_size <- cluster_size[order(cluster_size$size),]
+  i <- 1
+  repeat{
+    if(length(cast_ob) <= 1){
+      ##Stop at one cluster
+      break
+    }
+    cast_test <- cast_ob
+    ##assign affinities if cluster i to other clusters
+    clust_id <- cluster_size$clust[i]
+    updates <- lapply(seq_along(cast_ob[[clust_id]]), function(u, cast_ob, sim_mat){
+      clust_aff <- sapply(cast_ob, function(clust, site, sim_mat){
+          ##get the affinity to each cluster
+          if(length(clust) > 0){
+            return(mean(sim_mat[site, clust]))
+          } else {
+            ##empty clusters have 0 affinity
+            return(0)
+          }
+      }, site = cast_ob[[clust_id]][u], sim_mat = sim_mat)
+      new_clust <- which(clust_aff == max(clust_aff[-clust_id]))[1]
+      return(data.frame(site = cast_ob[[clust_id]][u], old = clust_id, new = new_clust))
+      }, cast_ob = cast_ob, sim_mat = sim_mat)
+    updates <- do.call("rbind", updates)
+    ##Apply updates
+      message("reassigned [", nrow(updates),"] samples from cluster [", clust_id, "]")
+      for(upd in 1:nrow(updates) ){
+        cast_test[[ updates[upd,"old"] ]] <- cast_test[[ updates[upd,"old"] ]][cast_test[[ updates[upd,"old"] ]] != updates[upd,"site"]  ] 
+        cast_test[[updates[upd,"new"]]] <- c(cast_test[[updates[upd,"new"]]], updates[upd,"site"])
+      }
+
+    cast_test[[clust_id]] <- NULL
+
+    ##test new cluster affinities
+    new_aff <- do.call("c", aff_clust_inner(cast_obj = cast_test, sim_mat = sim_mat))
+    message("min_new_aff: [", min(new_aff), "] and threshold of [", aff_thres, "]")
+    if(min(new_aff) > aff_thres){
+      cast_ob <- cast_stabilize(cast_test, aff_thres = aff_thres, sim_mat = sim_mat, max_iter = max_iter )
+      i <- 0
+      cluster_size <- data.frame(clust = 1:length(cast_ob), size = sapply(cast_ob, length))
+      cluster_size <- cluster_size[order(cluster_size$size),]
+    }
+
+    i <- i + 1
+    if(i > nrow(cluster_size)){
+      break
+    }
+  }
+  return(cast_ob)
+}
+
 ##within cluster affinity
 ##returns a list
 aff_clust_inner <- function(cast_obj, sim_mat){
