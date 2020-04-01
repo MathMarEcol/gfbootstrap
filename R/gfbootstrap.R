@@ -1432,9 +1432,9 @@ cast_stabilize <- function(cast_obj, aff_thres, sim_mat, max_iter = 20){
 ##returns a list
 aff_clust_inner <- function(cast_obj, sim_mat){
   lapply(seq_along(cast_obj), function(clust, cast_obj, sim_mat){
-    elem_cor <- sim_mat[clust,clust]
-    if(length(clust) > 1){
-      elems_mean_aff <- rowSums(elem_cor)/length(clust)
+    elem_cor <- sim_mat[cast_obj[[clust]], cast_obj[[clust]] ]
+    if(length(cast_obj[[clust]]) > 1){
+      elems_mean_aff <- rowSums(elem_cor)/length(cast_obj[[clust]])
       mean_aff <- mean(elems_mean_aff)
     } else {
       mean_aff <- elem_cor
