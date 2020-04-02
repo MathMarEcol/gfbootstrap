@@ -1342,7 +1342,13 @@ cast_alg <- function(sim_mat, aff_thres){
       ##Strong affinity is needed to join a large group
 
       ##Short-circuit evaluation, won't try to find max of an empty set
-      while(any(spares) && (max(aff_local[spares]) >= aff_thres*mean(aff_local[new_clust]))){
+      ##trialling a slightly different approach.
+      ##Find any high affinity elements.
+      ##high affinity, sum of affinities into cluster (which is aff_local)
+      ##exceeds thres * size of cluster
+      ##So now it is a rolling mean. At each iteration, you add to the sum,
+      ## then only divide by n when you need to test.
+      while(any(spares) && (max(aff_local[spares]/sum(new_clust)) >= aff_thres)){
         maxima <- which(aff_local == max(aff_local[spares]) & spares)
         new_elem <- maxima[sample.int(length(maxima), 1)] ##intention: take one of the max at random
         new_clust[new_elem] <- TRUE
@@ -1357,7 +1363,7 @@ cast_alg <- function(sim_mat, aff_thres){
       }
 
       ##Removal stage
-      while(any(new_clust) && (min(aff_local[new_clust]) < aff_thres*mean(aff_local[new_clust]))){
+      while(any(new_clust) && (min(aff_local[new_clust]/sum(new_clust)) < aff_thres)){
         minima <- which(aff_local == min(aff_local[new_clust]) & new_clust)
         new_elem <- minima[sample.int(length(minima), 1)] ##intention: take one of the max at random
         new_clust[new_elem] <- FALSE
@@ -1504,7 +1510,7 @@ cast_alg_cautious <- function(sim_mat, aff_thres, max_iter = 20){
       ##Strong affinity is needed to join a large group
 
       ##Short-circuit evaluation, won't try to find max of an empty set
-      while(any(spares) && (max(aff_local[spares]) >= aff_thres*mean(aff_local[new_clust]))){
+      while(any(spares) && (max(aff_local[spares]/sum(new_clust)) >= aff_thres)){
         maxima <- which(aff_local == max(aff_local[spares]) & spares)
         new_elem <- maxima[sample.int(length(maxima), 1)] ##intention: take one of the max at random
         new_clust[new_elem] <- TRUE
@@ -1519,7 +1525,7 @@ cast_alg_cautious <- function(sim_mat, aff_thres, max_iter = 20){
       }
 
       ##Removal stage
-      while(any(new_clust) && (min(aff_local[new_clust]) < aff_thres*mean(aff_local[new_clust]))){
+      while(any(new_clust) && (min(aff_local[new_clust]/sum(new_clust)) < aff_thres)){
         minima <- which(aff_local == min(aff_local[new_clust]) & new_clust)
         new_elem <- minima[sample.int(length(minima), 1)] ##intention: take one of the max at random
         new_clust[new_elem] <- FALSE
