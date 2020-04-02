@@ -1430,7 +1430,8 @@ cast_stabilize <- function(cast_obj, aff_thres, sim_mat, max_iter = 20){
           }
         }, u = u, sim_mat = sim_mat)
         if(which.max(clust_aff) != clust_id){
-          return(data.frame(u = u, old = clust_id, new = which.max(clust_aff)))
+          aff_gain <- clust_aff[which.max(clust_aff)] - clust_aff[clust_id] 
+          return(data.frame(u = u, old = clust_id, new = which.max(clust_aff), gain = aff_gain))
         } else {
           return(NULL)
         }
@@ -1438,11 +1439,10 @@ cast_stabilize <- function(cast_obj, aff_thres, sim_mat, max_iter = 20){
     updates <- do.call("rbind", updates)
     ##Apply updates
     if(!is.null(updates)){
-      message("iteration [", iter, "] reassigned [", nrow(updates),"] samples")
-      for(upd in 1:nrow(updates) ){
-        cast_obj[[ updates[upd,"old"] ]] <- cast_obj[[ updates[upd,"old"] ]][cast_obj[[ updates[upd,"old"] ]] != updates[upd,"u"]  ] 
-        cast_obj[[updates[upd,"new"]]] <- c(cast_obj[[updates[upd,"new"]]], updates[upd,"u"])
-      }
+      best_switch <- which.max(updates$gain)
+      upd <- updates[best_switch, drop = FALSE]
+      cast_obj[[ updates[upd,"old"] ]] <- cast_obj[[ updates[upd,"old"] ]][cast_obj[[ updates[upd,"old"] ]] != updates[upd,"u"]  ] 
+      cast_obj[[updates[upd,"new"]]] <- c(cast_obj[[updates[upd,"new"]]], updates[upd,"u"])
     } else {
       break
     }
