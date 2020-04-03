@@ -1406,43 +1406,79 @@ cast_alg <- function(sim_mat, aff_thres){
 
 
 
-cast_stabilize <- function(cast_obj, aff_thres, sim_mat, max_iter = 20){
+cast_stabilize <- function(cast_obj, aff_thres, sim_mat, max_iter = nrow(sim_mat)*2){
   iter <- 1
 
+  #matrix, mean affinity of each site to each cluster
+  ##two cols must be updated each iteration
+  clust_aff <- aff_clust_all(sim_mat, cast_obj)
+  ##maps element to cluster
+  ##can be updated with a single value change each loop
+  clust_ind <- lapply(seq_along(cast_obj), function(clust, cast_obj){
+    data.frame(elem = cast_obj[[clust]], clust = clust)
+  }, cast_obj = cast_obj)
+  clust_ind <- do.call(rbind, clust_ind)
+  clust_ind <- clust_ind[order(clust_ind$elem), ]
+
+  ##sites that should not be moved, to preserve aff_thres
+  locked_sites <- c()
+
   while(iter <= max_iter){
-    ##For each vertex, find affinity to other clusters
-    ##Cast_obj is not huge, but constantly recreating it when I am just
-    ##flipping bools seems wasteful
-    ##This approach tests each site, and updates clustering at end
-    updates <- lapply(seq_along(cast_obj[[1]]), function(u, cast_obj, sim_mat){
-      clust_id <- which(sapply(cast_obj, function(clust, u){
-        u %in% clust
-      }, u = u))
-      assertthat::assert_that(length(clust_id) == 1)
-      ##u belongs to clust_id
-      clust_aff <- lapply(cast_obj, function(clust, u, sim_mat){
-          ##get the affinity to each cluster
-          if(any(clust)){
-            return(mean(sim_mat[u, clust]))
-          } else {
-            ##empty clusters have 0 affinity
-            return(0)
-          }
-        }, u = u, sim_mat = sim_mat)
-        if(which.max(clust_aff) != clust_id){
-          aff_gain <- clust_aff[which.max(clust_aff)] - clust_aff[clust_id] 
-          return(data.frame(u = u, old = clust_id, new = which.max(clust_aff), gain = aff_gain))
-        } else {
-          return(NULL)
-        }
-      }, cast_obj = cast_obj, sim_mat = sim_mat)
-    updates <- do.call("rbind", updates)
+    ##single step updates require some conserved data.
+
+    ##find maximal out of cluster affinity
+
+    ##only have to update clusters that change
+
+    ##candidates are sites from other clusters that exceed threshold
+
+    ##data.frame, element with highest affinity gain by changing clusters
+    ##must be recalculated every loop
+    ind <- clust_ind$elem + (clust_ind$clust - 1) * nrow(clust_ind)
+    clust_current <- clust_aff[ind]
+    gain <- clust_aff - clust_current
+    if(length(locked_sites ) > 0) {
+      gain[locked_sites, ] <- 0
+    }
+    max_ind <- which.max(gain)
+    max_ind_zero <- (max_ind -1)
+    i <- 1 + (max_ind_zero %% nrow(clust_ind)) #modulo is zero based indexing, R is 1 based indexing
+    from <- clust_ind$clust[i]
+    to <- (max_ind - i)/nrow(clust_ind) + 1
+    upd <- data.frame(i = i, from = from, to = to, gain = gain[max_ind])
+
     ##Apply updates
-    if(!is.null(updates)){
-      best_switch <- which.max(updates$gain)
-      upd <- updates[best_switch, drop = FALSE]
-      cast_obj[[ updates[upd,"old"] ]] <- cast_obj[[ updates[upd,"old"] ]][cast_obj[[ updates[upd,"old"] ]] != updates[upd,"u"]  ] 
-      cast_obj[[updates[upd,"new"]]] <- c(cast_obj[[updates[upd,"new"]]], updates[upd,"u"])
+    if(upd$gain > 0){
+      ## message("applying update [", iter,"]")
+      ## message(paste(names(upd), collapse =" - "))
+      ## message(paste(upd, collapse = " - "))
+
+
+      to_clust <- c(cast_obj[[upd$to]], upd$i)
+      clust_aff_to <- mean(sim_mat[to_clust, to_clust])
+      from_clust <- cast_obj[[ upd$from ]][cast_obj[[ upd$from ]] != upd$i  ] 
+      clust_aff_from <- mean(sim_mat[from_clust, from_clust])
+
+      if(clust_aff_to >= aff_thres && clust_aff_from >= aff_thres){
+        cast_obj[[upd$to]] <- to_clust
+        cast_obj[[upd$from]] <- from_clust
+
+        clust_ind[upd$i, 2] <- upd$to
+        clust_aff[, upd$to ] <- rowMeans(sim_mat[, cast_obj[[upd$to]], drop = FALSE] )
+        clust_aff[, upd$from ] <-rowMeans(sim_mat[, cast_obj[[upd$from]], drop = FALSE])
+
+        locked_sites <- c()
+
+      } else {
+        if(length(locked_sites ) > 0) {
+          locked_sites <- c(locked_sites, upd$i)
+        } else {
+          locked_sites <- upd$i
+        }
+        message("clust_aff_to [", clust_aff_to ,"] may have dropped below threshold [", aff_thres, "]")
+        message("clust_aff_from [", clust_aff_from ,"] may have dropped below threshold [", aff_thres, "]")
+      }
+
     } else {
       break
     }
