@@ -1502,6 +1502,7 @@ cast_stabilize <- function(cast_obj, aff_thres, sim_mat, max_iter = nrow(sim_mat
 
   ##sites that should not be moved, to preserve aff_thres
   locked_sites <- c()
+  all_clust_affs <- aff_clust_inner(cast_obj = cast_obj, sim_mat = sim_mat)
 
   while(iter <= max_iter){
     ##single step updates require some conserved data.
@@ -1539,13 +1540,28 @@ cast_stabilize <- function(cast_obj, aff_thres, sim_mat, max_iter = nrow(sim_mat
       from_clust <- cast_obj[[ upd$from ]][cast_obj[[ upd$from ]] != upd$i  ] 
       clust_aff_from <- mean(sim_mat[from_clust, from_clust])
 
-      if(clust_aff_to >= aff_thres && clust_aff_from >= aff_thres){
+      ##Update is good if, after the update, both clusters have affinity above
+      ## aff_thres
+      is_above_to <- clust_aff_to >= aff_thres
+      is_above_from <- clust_aff_from >= aff_thres
+      is_improve_to <- all_clust_affs[upd$to] <= clust_aff_to
+      is_improve_from <- all_clust_affs[upd$from] <= clust_aff_from
+
+      is_update <- (is_above_to || is_improve_to)  && (is_above_from || is_improve_from)
+
+
+      ##Update is also good if the affinity of clusters started below threshold
+      ##and the update has not made the situation worse.
+
+      if(is_update){
         cast_obj[[upd$to]] <- to_clust
         cast_obj[[upd$from]] <- from_clust
 
         clust_ind[upd$i, 2] <- upd$to
         clust_aff[, upd$to ] <- rowMeans(sim_mat[, cast_obj[[upd$to]], drop = FALSE] )
         clust_aff[, upd$from ] <-rowMeans(sim_mat[, cast_obj[[upd$from]], drop = FALSE])
+        all_clust_affs[upd$from] <- clust_aff_from
+        all_clust_affs[upd$to] <- clust_aff_to
 
         locked_sites <- c()
 
