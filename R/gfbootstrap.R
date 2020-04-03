@@ -1429,6 +1429,63 @@ cast_alg <- function(sim_mat, aff_thres){
 
 
 
+#' Stabilize cluster membership
+#'
+#' cast_stabilize() works iteratively, updating one site at a time
+#' and recalculating the affinities each time.
+#' cast_stabilize() will only make an update if it either maintains
+#' all the average within cluster affinities above the threshold, or
+#' increases the within cluster affinities if one is already below the
+#' threshold.
+#'
+#' cast_stabilize_batch() does a bulk update, finding all sites that
+#' could be assigned to another cluster before recalulating the affinities.
+#' cast_stabilize_batch() always proceeds without checking the impact
+#' the update has on within-cluster affinities.
+cast_stabilize_batch <- function(cast_obj, aff_thres, sim_mat, max_iter = 20){
+  iter <- 1
+
+  while(iter <= max_iter){
+    ##For each vertex, find affinity to other clusters
+    ##Cast_obj is not huge, but constantly recreating it when I am just
+    ##flipping bools seems wasteful
+    ##This approach tests each site, and updates clustering at end
+    updates <- lapply(seq_along(cast_obj[[1]]), function(u, cast_obj, sim_mat){
+      clust_id <- which(sapply(cast_obj, function(clust, u){
+        u %in% clust
+      }, u = u))
+      assertthat::assert_that(length(clust_id) == 1)
+      ##u belongs to clust_id
+      clust_aff <- lapply(cast_obj, function(clust, u, sim_mat){
+          ##get the affinity to each cluster
+          if(any(clust)){
+            return(mean(sim_mat[u, clust]))
+          } else {
+            ##empty clusters have 0 affinity
+            return(0)
+          }
+        }, u = u, sim_mat = sim_mat)
+        if(which.max(clust_aff) != clust_id){
+          return(data.frame(u = u, old = clust_id, new = which.max(clust_aff)))
+        } else {
+          return(NULL)
+        }
+      }, cast_obj = cast_obj, sim_mat = sim_mat)
+    updates <- do.call("rbind", updates)
+    ##Apply updates
+    if(!is.null(updates)){
+      message("iteration [", iter, "] reassigned [", nrow(updates),"] samples")
+      for(upd in 1:nrow(updates) ){
+        cast_obj[[ updates[upd,"old"] ]] <- cast_obj[[ updates[upd,"old"] ]][cast_obj[[ updates[upd,"old"] ]] != updates[upd,"u"]  ] 
+        cast_obj[[updates[upd,"new"]]] <- c(cast_obj[[updates[upd,"new"]]], updates[upd,"u"])
+      }
+    } else {
+      break
+    }
+    iter <- iter + 1
+  }
+  return(cast_obj)
+}
 cast_stabilize <- function(cast_obj, aff_thres, sim_mat, max_iter = nrow(sim_mat)*2){
   iter <- 1
 
