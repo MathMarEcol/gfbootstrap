@@ -1306,6 +1306,20 @@ aff_func <- function(x, u, sim_mat){
   return(sim_mat[u, ]*x)
 }
 
+aff_clust_all <- function(sim_mat, cast_ob){
+  do.call(cbind, lapply(1:length(cast_ob), 
+                        function(clust, sim_mat, cast_ob){
+
+                          ##get the affinity to each cluster
+                          if(length(cast_ob[[clust]]) > 0){
+                            return(rowMeans(sim_mat[, cast_ob[[clust]], drop = FALSE]))
+                          } else {
+                            ##empty clusters have 0 affinity
+                            return(rep(0, nrow(sim_mat)))
+                          }
+                        }, cast_ob = cast_ob, sim_mat = sim_mat))
+}
+
 cast_alg <- function(sim_mat, aff_thres){
 ##rather than wrestle with integer sets, I will use boolean vectors
   
