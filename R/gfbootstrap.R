@@ -1636,7 +1636,7 @@ cast_alg_cautious <- function(sim_mat, aff_thres, max_iter = 20){
 
   return(clust)
 }
-cast_compact <- function(cast_ob, sim_mat, aff_thres, max_iter = 20){
+cast_compact <- function(cast_ob, sim_mat, aff_thres, max_iter = nrow(sim_mat)*2){
   ##sort by size
   cluster_size <- data.frame(clust = 1:length(cast_ob), size = sapply(cast_ob, length))
   cluster_size <- cluster_size[order(cluster_size$size),]
@@ -1675,7 +1675,7 @@ cast_compact <- function(cast_ob, sim_mat, aff_thres, max_iter = 20){
     ##test new cluster affinities
     new_aff <- do.call("c", aff_clust_inner(cast_obj = cast_test, sim_mat = sim_mat))
     message("min_new_aff: [", min(new_aff), "] and threshold of [", aff_thres, "]. attempt: [", i, "]")
-    cast_test_stab <- cast_stabilize(cast_test, aff_thres = aff_thres, sim_mat = sim_mat, max_iter = max_iter )
+    cast_test_stab <- cast_stabilize(cast_obj = cast_test, aff_thres = aff_thres, sim_mat = sim_mat, max_iter = max_iter )
     new_aff_stab <- do.call("c", aff_clust_inner(cast_obj = cast_test_stab, sim_mat = sim_mat))
     message("min_new_aff_stab: [", min(new_aff_stab), "] and threshold of [", aff_thres, "]")
     if(min(new_aff_stab) >= aff_thres && min(new_aff) >= aff_thres){
