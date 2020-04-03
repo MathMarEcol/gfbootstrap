@@ -1698,12 +1698,7 @@ cast_compact <- function(cast_ob, sim_mat, aff_thres, max_iter = nrow(sim_mat)*2
 aff_clust_inner <- function(cast_obj, sim_mat){
   lapply(seq_along(cast_obj), function(clust, cast_obj, sim_mat){
     elem_cor <- sim_mat[cast_obj[[clust]], cast_obj[[clust]] ]
-    if(length(cast_obj[[clust]]) > 1){
-      elems_mean_aff <- rowSums(elem_cor)/length(cast_obj[[clust]])
-      mean_aff <- mean(elems_mean_aff)
-    } else {
-      mean_aff <- elem_cor
-    }
+    mean_aff <- mean(elem_cor)
     return(mean_aff)
   }, cast_obj = cast_obj, sim_mat = sim_mat)
 }
