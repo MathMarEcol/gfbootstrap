@@ -406,13 +406,22 @@ gg_bootstrapGF <- function(x,
 #' around each cluster.
 gg_sim_mat <- function(sim_mat,
                        cast_ob = NULL,
-                       secondary_sort = TRUE,
+                       sort_between = TRUE,
+                       sort_within = TRUE,
                        highlight = FALSE
                        ){
 
   if(!is.null(cast_ob)) {
     ##order by cast object
-    if(secondary_sort) {
+
+    if(sort_within){
+      cast_ob <- lapply(cast_ob, function(clust, sim_mat){
+        ##sort by strength of affinity to cluster
+        order(rowMeans(sim_mat[clust, clust, drop = FALSE]))
+        return(clust[order])
+      },  sim_mat = sim_mat)
+    }
+    if(sort_between) {
       aff_btw <- aff_cluster_between(sim_mat = sim_mat, cast_obj = cast_ob)
 
       aff_btw_wide <- matrix(aff_btw$affs, sqrt(nrow(aff_btw)), sqrt(nrow(aff_btw)))
