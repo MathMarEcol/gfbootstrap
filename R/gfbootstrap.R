@@ -1504,11 +1504,15 @@ cast_stabilize_batch <- function(cast_obj, aff_thres, sim_mat, max_iter = 20){
   return(cast_obj)
 }
 cast_stabilize <- function(cast_obj, aff_thres, sim_mat, max_iter = nrow(sim_mat)*2){
-  iter <- 1
 
-  #matrix, mean affinity of each site to each cluster
+  ##matrix, mean affinity of each site to each cluster
   ##two cols must be updated each iteration
-  clust_aff <- aff_clust_all(sim_mat, cast_obj)
+  ## clust_aff <- aff_clust_all(sim_mat, cast_test)
+  clust_aff_sum <- aff_clust_sum(sim_mat, cast_obj)
+  ## matrix, sum affinity and cluster N matrix
+  clust_aff_n <- do.call(c, lapply(cast_obj, length))
+  clust_aff <- clust_aff_sum * rep(1 / clust_aff_n, each = nrow(clust_aff_sum))
+
   ##maps element to cluster
   ##can be updated with a single value change each loop
   clust_ind <- lapply(seq_along(cast_obj), function(clust, cast_obj){
@@ -1519,8 +1523,11 @@ cast_stabilize <- function(cast_obj, aff_thres, sim_mat, max_iter = nrow(sim_mat
 
   ##sites that should not be moved, to preserve aff_thres
   locked_sites <- c()
-  all_clust_affs <- aff_clust_inner(cast_obj = cast_obj, sim_mat = sim_mat)
+  all_clust_affs <- do.call(c, lapply(seq_along(cast_obj), function(clust, cast_obj, clust_aff){
+    mean(clust_aff[ cast_obj[[clust]], clust])
+  }, clust_aff = clust_aff, cast_obj = cast_obj))
 
+  iter <- 1
   while(iter <= max_iter){
     ##single step updates require some conserved data.
 
@@ -1553,9 +1560,11 @@ cast_stabilize <- function(cast_obj, aff_thres, sim_mat, max_iter = nrow(sim_mat
 
 
       to_clust <- c(cast_obj[[upd$to]], upd$i)
-      clust_aff_to <- mean(sim_mat[to_clust, to_clust])
       from_clust <- cast_obj[[ upd$from ]][cast_obj[[ upd$from ]] != upd$i  ] 
-      clust_aff_from <- mean(sim_mat[from_clust, from_clust])
+      clust_sum_to <- clust_aff_sum[, upd$to] + sim_mat[, upd$i]
+      clust_aff_to <- 1/(clust_aff_n[upd$to] + 1) *  mean(clust_sum_to[to_clust])
+      clust_sum_from <- clust_aff_sum[, upd$from] - sim_mat[, upd$i]
+      clust_aff_from <- 1/(clust_aff_n[upd$from] - 1) * mean(clust_sum_from[from_clust])
 
       ##Update is good if, after the update, both clusters have affinity above
       ## aff_thres
@@ -1575,8 +1584,15 @@ cast_stabilize <- function(cast_obj, aff_thres, sim_mat, max_iter = nrow(sim_mat
         cast_obj[[upd$from]] <- from_clust
 
         clust_ind[upd$i, 2] <- upd$to
-        clust_aff[, upd$to ] <- rowMeans(sim_mat[, cast_obj[[upd$to]], drop = FALSE] )
-        clust_aff[, upd$from ] <-rowMeans(sim_mat[, cast_obj[[upd$from]], drop = FALSE])
+
+        clust_aff_n[upd$to] <- clust_aff_n[upd$to] + 1
+        clust_aff_sum[, upd$to] <- clust_sum_to
+        clust_aff[, upd$to] <- clust_aff_sum[, upd$to] * (1 / clust_aff_n[upd$to])
+
+        clust_aff_n[upd$from] <- clust_aff_n[upd$from] - 1
+        clust_aff_sum[, upd$from] <- clust_sum_from
+        clust_aff[, upd$from] <- clust_aff_sum[, upd$from] * (1 / clust_aff_n[upd$from])
+
         all_clust_affs[upd$from] <- clust_aff_from
         all_clust_affs[upd$to] <- clust_aff_to
 
@@ -1588,8 +1604,8 @@ cast_stabilize <- function(cast_obj, aff_thres, sim_mat, max_iter = nrow(sim_mat
         } else {
           locked_sites <- upd$i
         }
-        message("clust_aff_to [", clust_aff_to ,"] may have dropped below threshold [", aff_thres, "]")
-        message("clust_aff_from [", clust_aff_from ,"] may have dropped below threshold [", aff_thres, "]")
+        ## message("clust_aff_to [", clust_aff_to ,"] may have dropped below threshold [", aff_thres, "]")
+        ## message("clust_aff_from [", clust_aff_from ,"] may have dropped below threshold [", aff_thres, "]")
       }
 
     } else {
