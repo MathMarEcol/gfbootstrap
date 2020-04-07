@@ -1800,7 +1800,7 @@ cast_compact_batch <- function(cast_ob, sim_mat, aff_thres, max_iter = nrow(sim_
 }
 cast_compact <- function(cast_ob, sim_mat, aff_thres, max_iter = nrow(sim_mat)*2){
   ##sort by size
-  i <- 1
+  clust_remove <- 1
 
 
   ##matrix, mean affinity of each site to each cluster
@@ -1821,7 +1821,7 @@ cast_compact <- function(cast_ob, sim_mat, aff_thres, max_iter = nrow(sim_mat)*2
     cast_test <- cast_ob
     cluster_size <- data.frame(clust = 1:length(cast_test), size = sapply(cast_test, length))
     cluster_size <- cluster_size[order(cluster_size$size),]
-    clust_id <- cluster_size$clust[i]
+    clust_id <- cluster_size$clust[clust_remove]
 
 
 
@@ -1954,12 +1954,17 @@ cast_compact <- function(cast_ob, sim_mat, aff_thres, max_iter = nrow(sim_mat)*2
       ## matrix, sum affinity and cluster N matrix
       clust_aff_n <- do.call(c, lapply(cast_test, length))
       clust_aff <- clust_aff[,-clust_id]
-      i <- 0
-    } 
+      clust_remove <- 0
+
+      message("Disbanded cluster [", clust_id, "]")
+    } else {
+      message("Could not disband cluster [", clust_id, "]")
+      message("clust_remove: [", clust_remove, "]")
+    }
 
     ##try next cluster
-    i <- i + 1
-    if(i > nrow(cluster_size)){
+    clust_remove <- clust_remove + 1
+    if(clust_remove > nrow(cluster_size)){
       break
     }
   }
