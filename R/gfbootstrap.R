@@ -2142,7 +2142,9 @@ hubert_gamma <- function(sim_mat, member_mat, norm_z = TRUE){
     sd_s <- 1
   }
 
-  h_gamma <- mean(sim_mat * member_mat) #not exact, Tseng and Kao 2003 calculate this over just the upper triangular matrix
+  h_gamma <- (1/sum(upper.tri(sim_mat))) *
+    sum((upper.tri(sim_mat)*sim_mat) *
+          member_mat)
   return(h_gamma)
 }
 
