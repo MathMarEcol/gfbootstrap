@@ -1709,7 +1709,7 @@ cast_alg_cautious <- function(sim_mat, aff_thres, max_iter = 20){
 
   return(clust)
 }
-cast_compact <- function(cast_ob, sim_mat, aff_thres, max_iter = nrow(sim_mat)*2){
+cast_compact_batch <- function(cast_ob, sim_mat, aff_thres, max_iter = nrow(sim_mat)*2){
   ##sort by size
   cluster_size <- data.frame(clust = 1:length(cast_ob), size = sapply(cast_ob, length))
   cluster_size <- cluster_size[order(cluster_size$size),]
@@ -1748,7 +1748,7 @@ cast_compact <- function(cast_ob, sim_mat, aff_thres, max_iter = nrow(sim_mat)*2
     ##test new cluster affinities
     new_aff <- do.call("c", aff_clust_inner(cast_obj = cast_test, sim_mat = sim_mat))
     message("min_new_aff: [", min(new_aff), "] and threshold of [", aff_thres, "]. attempt: [", i, "]")
-    cast_test_stab <- cast_stabilize(cast_obj = cast_test, aff_thres = aff_thres, sim_mat = sim_mat, max_iter = max_iter )
+    cast_test_stab <- cast_stabilize_batch(cast_obj = cast_test, aff_thres = aff_thres, sim_mat = sim_mat, max_iter = max_iter )
     new_aff_stab <- do.call("c", aff_clust_inner(cast_obj = cast_test_stab, sim_mat = sim_mat))
     message("min_new_aff_stab: [", min(new_aff_stab), "] and threshold of [", aff_thres, "]")
     if(min(new_aff_stab) >= aff_thres && min(new_aff) >= aff_thres){
@@ -1763,6 +1763,167 @@ cast_compact <- function(cast_ob, sim_mat, aff_thres, max_iter = nrow(sim_mat)*2
       break
     }
   }
+  return(cast_ob)
+}
+cast_compact <- function(cast_ob, sim_mat, aff_thres, max_iter = nrow(sim_mat)*2){
+  ##sort by size
+  i <- 1
+
+
+  repeat{
+    if(length(cast_ob) <= 1){
+      ##Stop at one cluster
+      break
+    }
+    ##assign affinities if cluster i to other clusters
+
+    cast_test <- cast_ob
+    cluster_size <- data.frame(clust = 1:length(cast_test), size = sapply(cast_test, length))
+    cluster_size <- cluster_size[order(cluster_size$size),]
+    clust_id <- cluster_size$clust[i]
+
+    ##matrix, mean affinity of each site to each cluster
+    ##two cols must be updated each iteration
+    clust_aff <- aff_clust_all(sim_mat, cast_test)
+    ##maps element to cluster
+    ##can be updated with a single value change each loop
+    clust_ind <- lapply(seq_along(cast_test), function(clust, cast_test){
+      data.frame(elem = cast_test[[clust]], clust = clust)
+    }, cast_test = cast_test)
+    clust_ind <- do.call(rbind, clust_ind)
+    clust_ind <- clust_ind[order(clust_ind$elem), ]
+    ##best move is difference between current group and other group
+    ## Gain can range from -1 to 1, so
+    ##using an absolute of -2 means points in clust_id will move before anything else
+    ##with a range of 1 to 3
+    clust_aff[, clust_id] <- -2 
+
+    ##sites that should not be moved, to preserve aff_thres
+    locked_sites <- c()
+    all_clust_affs <- aff_clust_inner(cast_obj = cast_test, sim_mat = sim_mat)
+    ##disband and stabilize
+    iter <- 1
+    while(iter <= max_iter){
+      ##single step updates require some conserved data.
+
+      ##find maximal out of cluster affinity
+
+      ##only have to update clusters that change
+
+      ##candidates are sites from other clusters that exceed threshold
+
+      ##data.frame, element with highest affinity gain by changing clusters
+      ##must be recalculated every loop
+      ind <- clust_ind$elem + (clust_ind$clust - 1) * nrow(clust_ind)
+      clust_current <- clust_aff[ind]
+      gain <- clust_aff - clust_current
+      if(length(locked_sites ) > 0) {
+        gain[locked_sites, ] <- 0
+      }
+      max_ind <- which.max(gain)
+      max_ind_zero <- (max_ind - 1)
+      i <- 1 + (max_ind_zero %% nrow(clust_ind)) #modulo is zero based indexing, R is 1 based indexing
+      from <- clust_ind$clust[i]
+      to <- (max_ind - i)/nrow(clust_ind) + 1
+      upd <- data.frame(i = i, from = from, to = to, gain = gain[max_ind])
+
+      ##Apply updates
+      if(upd$gain > 0){
+        message("applying update [", iter,"]")
+        message(paste(names(upd), collapse =" - "))
+        message(paste(upd, collapse = " - "))
+
+        if(upd$from == clust_id){
+          ##Update is moving a site from the disbanded cluster
+          to_clust <- c(cast_test[[upd$to]], upd$i)
+          clust_aff_to <- mean(sim_mat[to_clust, to_clust])
+          from_clust <- cast_test[[ upd$from ]][cast_test[[ upd$from ]] != upd$i  ] 
+
+          ##Update is good if, after the update, the to cluster has affinity above
+          ## aff_thres
+          is_above_to <- clust_aff_to >= aff_thres
+          is_improve_to <- all_clust_affs[upd$to] <= clust_aff_to
+
+          is_update <- (is_above_to || is_improve_to)
+        } else {
+          ##Update is moving a site between two surviving clusters, to stablize
+          to_clust <- c(cast_test[[upd$to]], upd$i)
+          clust_aff_to <- mean(sim_mat[to_clust, to_clust])
+          from_clust <- cast_test[[ upd$from ]][cast_test[[ upd$from ]] != upd$i  ] 
+          clust_aff_from <- mean(sim_mat[from_clust, from_clust])
+
+          ##Update is good if, after the update, both clusters have affinity above
+          ## aff_thres
+          is_above_to <- clust_aff_to >= aff_thres
+          is_above_from <- clust_aff_from >= aff_thres
+          is_improve_to <- all_clust_affs[upd$to] <= clust_aff_to
+          is_improve_from <- all_clust_affs[upd$from] <= clust_aff_from
+
+          is_update <- (is_above_to || is_improve_to)  && (is_above_from || is_improve_from)
+
+
+          ##Update is also good if the affinity of clusters started below threshold
+          ##and the update has not made the situation worse.
+
+        }
+
+        if(is_update){
+          cast_test[[upd$to]] <- to_clust
+          cast_test[[upd$from]] <- from_clust
+
+          clust_ind[upd$i, 2] <- upd$to
+          cast_test[[upd$from]] <- from_clust
+          tmp_aff <- vector(mode = "numeric", length = nrow(sim_mat))
+          ##calculating the affinity from all sites to cluster to
+          ## for(j in seq.int(1, nrow(sim_mat))) {
+          ##   tmp_aff[j] <- sum(sim_mat[j, cast_test[[upd$to]] ])
+          ## }
+          ## clust_aff[, upd$to] <- (1/length(cast_test[[upd$to]])) * tmp_aff
+
+          clust_aff[, upd$to ] <- (1/length(cast_test[[upd$to]])) * apply(sim_mat[cast_test[[upd$to]], , drop = FALSE], 2, sum)
+
+          if(upd$from != clust_id){
+            all_clust_affs[upd$from] <- clust_aff_from
+            ## tmp_aff <- vector(mode = "numeric", length = nrow(sim_mat))
+            ## ##calculating the affinity from all sites to cluster to
+            ## for(j in seq.int(1, nrow(sim_mat))) {
+            ##   tmp_aff[j] <- sum(sim_mat[j, cast_test[[upd$from]] ])
+            ## }
+            ## clust_aff[, upd$from ] <- (1/length(cast_test[[upd$from]])) * tmp_aff
+            clust_aff[, upd$from ] <- (1/length(cast_test[[upd$from]])) * apply(sim_mat[cast_test[[upd$from]], , drop = FALSE], 2, sum)
+          }
+          all_clust_affs[upd$to] <- clust_aff_to
+          locked_sites <- c()
+
+        } else {
+          if(length(locked_sites ) > 0) {
+            locked_sites <- c(locked_sites, upd$i)
+          } else {
+            locked_sites <- upd$i
+          }
+          message("clust_aff_to [", clust_aff_to ,"] may have dropped below threshold [", aff_thres, "]")
+          message("clust_aff_from [", clust_aff_from ,"] may have dropped below threshold [", aff_thres, "]")
+        }
+      } else {
+        break
+      }
+      iter <- iter + 1
+    }
+    ##check that the site has been disbanded
+    if(length(cast_test[[clust_id]]) == 0) {
+      ##cluster was successfully disbanded within max_iter
+      cast_test[clust_id] <- NULL
+      cast_ob <- cast_test
+      i <- 0
+    } 
+
+    ##try next cluster
+    i <- i + 1
+    if(i > nrow(cluster_size)){
+      break
+    }
+  }
+  message("New number of clusters: [", length(cast_ob), "]")
   return(cast_ob)
 }
 
