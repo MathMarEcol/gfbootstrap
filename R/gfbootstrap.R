@@ -417,8 +417,8 @@ gg_sim_mat <- function(sim_mat,
     if(sort_within){
       cast_ob <- lapply(cast_ob, function(clust, sim_mat){
         ##sort by strength of affinity to cluster
-        order(rowMeans(sim_mat[clust, clust, drop = FALSE]))
-        return(clust[order])
+        ord <- order(rowMeans(sim_mat[clust, clust, drop = FALSE]))
+        return(clust[ord])
       },  sim_mat = sim_mat)
     }
     if(sort_between) {
