@@ -33,6 +33,8 @@
 #'
 #' @import future.apply
 #'
+#' @export
+#'
 #' @examples
 #'
 #' library(gradientForest)
@@ -148,11 +150,14 @@ bootstrapGradientForest <- function(
 #' gfbootstrap_dist() assumes that every GF model has the same
 #' set of predictor variables.
 #'
-#' If an offsets vector is provided, it is included in the result.
+#' If an offsets vector is provided, it is used to calculate the result.
 #'
-#' x_samples integer number of points sampled along each cumulative importance curve, evenly spaced.
+#' @param gf_list a bootstrapped list of Gradient Forest objects, created by bootStrapGradientForest()
+#' @param offsets data.frame of sample by predictors, giving the offset for each curve. The default, NULL, sets offsets to 0.
+#' @param x_samples integer number of points sampled along each cumulative importance curve, evenly spaced.#'
+#' @return Returns a data.frame of areas between curves for each pair and each predictor.
 #'
-#' Returns a data.frame of areas between curves for each pair and each predictor.
+#' @export
 gfbootstrap_dist <- function(gf_list,
                              offsets = NULL,
                              x_samples = 100){
@@ -270,7 +275,11 @@ gfbootstrap_dist <- function(gf_list,
 #' such that the total area between the curves is
 #' minimised.
 #'
-#' \param x the data.frame returned by gfbootstrap_dist()
+#' @param x the data.frame returned by gfbootstrap_dist()
+#'
+#' @return numeric offsets data.frame, bootstrap sample by predictor
+#' 
+#' @export
 gfbootstrap_offsets <- function(x){
 
   K <- max(x$j)
@@ -298,20 +307,17 @@ gfbootstrap_offsets <- function(x){
   return(offsets_new)
 }
 
-#' Predict bootstrapped GF object
-#'
-#' Given a fitted gfbootstrap object, predict new points.
-#'
-#' Unlike most predict functions, you get multiple output rows per input row.
-#' The id_cols parameter allows you to specify which columns should be used as identifiers for each input row.
-#' The total number of output rows is gfbootstrap$nbootstraps * nrow(predict_points)
-#'
-#'
-
-
 #' plot cumimp for bootStrapGradientForest
 #'
-#' Returns a ggplot object, ready for plotting
+#' @param x a bootStrapGradientForest object
+#' @param vars names of predictor variables to use
+#' @param n_curves Number of curves to plot. If less than the number of bootstrap samples, then samples are chosen randomly
+#' @param debug additional plots and messages if TRUE
+#'
+#' @return Returns a ggplot object, ready for plotting.
+#'
+#' @export
+#'
 gg_bootstrapGF <- function(x,
                            vars = names(importance(x$gf_list[[1]], type = "Weighted", sorted = TRUE)),
                            n_curves = 10,
@@ -505,8 +511,9 @@ compress_extrap_z <- function(x, p, a, b){
 #' The behaviour is very similar to predict.gradientForest,
 #' but due to the way bootstrapGradientForest is intended
 #' to be used, an extra parameter, `type` is added.
-#'
-#' `type` is a vector containing elements from
+#' @param object a bootstrapGradientForest object
+#' @param newdata data.frame of new observations to predict. If NULL, use observations from object.
+#' @param type is a vector containing elements from
 #' c("mean", "variance", "points", "weight")
 #'
 #' "mean" gives the unweighted mean of the points (default, for
@@ -523,37 +530,33 @@ compress_extrap_z <- function(x, p, a, b){
 #' for each row of input, x_row is included in the returned
 #' data.frame to match inputs to outputs.
 #'
-#' extrap can take on 4 values, c("clip", "linear", "compress", "na")
+#' @param extrap can be TRUE or FALSE
 #'
-#' "linear" extrapolate each model linearly using average gradient
+#' If extrap = FALSE, return NA outside of the training values. extrap = FALSE only uses
+#' models that observed the training data when calculating mean and variance
 #'
-#' "clip" returns the maximum or minimum Y if X exceeds training values
+#' If extrap = TRUE, then the curves are extrapolated if the new value lies outside
+#' the training values.
+#' @param extrap_pow is only used with extrap = TRUE, and sets the
+#' compression power. 1/4 gives the 4th root. 1 produces linear extrapolation
+#' and 0 clips the extrapolation to the min and max values of Y.
 #'
-#' "compress" extrapolates, but applies compression so predicted
-#' values approach an asymptote as X moves veary far from training values.
-#' extrap_pow is only used with "compress", and sets the
-#' compression power. 1/4 gives the 4th root, 1 is equivalent to "linear"
-#' and 0 is equivalent to "clip"
-#'
-#' TODO: just use "compress" with edge cases for linear and clip
+#' @param ... arguments passed to gradientForest::cumimp()
 #' TODO: This code is rather spaghetti, eg. activity 4 depends on 2 and 3,
 #' then activity 5 depends on 1 and 4
 #'
-#' "na" return Na outside of the training values. "na" only uses
-#' models that observed the training data when calculating mean and variance
-#' ... arguments passed to cumimp
-#' If `type` contains more than one string, a list of
-#' data.frames will be returned, otherwise just a data.frame.
+#' @return A long form data.frame, with $type giving the prediction type.
+#'
+#' @export
 predict.bootstrapGradientForest <- function(object,
                                             newdata,
                                             type = c("mean"),
-                                            extrap="compress",
+                                            extrap=TRUE,
                                             extrap_pow = 1/4,
                                             ...){
 
   assertthat::assert_that("bootstrapGradientForest" %in% class(object))
-  assertthat::assert_that(extrap %in% c("linear", "clip", "compress", "na"))
-  assertthat::assert_that(length(extrap) == 1)
+  assertthat::assert_that(is.logical( extrap) )
   if (missing(newdata))
     newdata <- object$gf_list[[1]]$X
 
@@ -639,12 +642,12 @@ predict.bootstrapGradientForest <- function(object,
       is_upper <- tmp_x > x_model[2]
       ## pass the points above the upper limit into compress_extrap_z
       if(any(is_upper)) {
-        predicted[is_upper] <- compress_extrap_z(tmp_x[is_upper] - x_model[2], extrap_pow, grad, y_model[2])
+        predicted[is_upper] <- gfbootstrap:::compress_extrap_z(tmp_x[is_upper] - x_model[2], extrap_pow, grad, y_model[2])
       }
       ## repeat for points below the lower limit
       is_lower <- tmp_x < x_model[1]
       if(any(is_lower)) {
-        predicted[is_lower] <- -compress_extrap_z(-(tmp_x[is_lower] - x_model[1]), extrap_pow, grad, -y_model[1])
+        predicted[is_lower] <- -gfbootstrap:::compress_extrap_z(-(tmp_x[is_lower] - x_model[1]), extrap_pow, grad, -y_model[1])
       }
     }
     ##apply offset
@@ -709,7 +712,11 @@ predict.bootstrapGradientForest <- function(object,
 #' full set of predictors, even if some models only
 #' use a subset.
 #'
-#' 
+#' @param obj gfbootstrap object
+#'
+#' @return vector of character strings, naming the predictors
+#'
+#' @export
 pred_names <- function(obj) {
 unique(do.call("c", future.apply::future_lapply(obj$gf_list,
                                                             function(x){
@@ -741,6 +748,18 @@ unique(do.call("c", future.apply::future_lapply(obj$gf_list,
 #' is that weights must be specified in this call,
 #' not at the predict.combinedGradientForest() call, 
 #' so offsets for each curve can be calculated now.
+#'
+#' @param n_samp number of bootstrap samples
+#' @param x_samples number of points along each cumimp curve for
+#' deciding the best offsets
+#' @param nbin number of bins for the cumimp curves
+#' @param method see gradientForest::combinedGradientForest
+#' @param standardize see gradientForest::combinedGradientForest
+#' @param weight see gradientForest::combinedGradientForest
+#'
+#' @return combinedBootstrapGF object
+#'
+#' @export
 #'
 combinedBootstrapGF <- function(...,
                                 n_samp,
@@ -812,7 +831,11 @@ combinedBootstrapGF <- function(...,
 #' full set of predictors, even if some models only
 #' use a subset.
 #'
-#' 
+#' @param obj combinedBootstrapGF object
+#'
+#' @return vector of character strings, naming the predictors
+#'
+#' @export
 pred_names_combined <- function(obj) {
   unique(do.call("c", future.apply::future_lapply(obj$gf_list,
                                                   function(x){
@@ -821,16 +844,19 @@ pred_names_combined <- function(obj) {
                                                   })
                  ))
 }
-                                        #             (2) List it as "suggests" in your DESCRIPTION file and
-                                        #precede each use with "if(require(desiredR_ForgePackage))".  If
-                                        #"require" returns TRUE, you do what you want.  Else issue an error message.
 
 #' Combined gf_dist
 #'
 #' Calculate the distance between bootstrapped
 #' samples of combined gradientForest models.
 #'
+#' @param gf_combine combinedBootstrapGF object
+#' @param x_samples number of points along each cumimp curve for
+#' deciding the best offsets
 #'
+#' @return data.frame, bootstraps by predictors
+#'
+#' @export
 combine_gfbootstrap_dist <- function(gf_combine,
                                      x_samples = 100){
   assertthat::assert_that(inherits(gf_combine, "combinedBootstrapGF"))
@@ -942,7 +968,14 @@ combine_gfbootstrap_dist <- function(gf_combine,
 
 #' plot cumimp for bootStrapGradientForest
 #'
-#' Returns a ggplot object, ready for plotting
+#' @param x a combinedBootstrapGradientForest object
+#' @param vars names of predictor variables to use
+#' @param n_curves Number of curves to plot. If less than the number of bootstrap samples, then samples are chosen randomly
+#' @param debug additional plots and messages if TRUE
+#'
+#' @return Returns a ggplot object, ready for plotting.
+#'
+#' @export
 gg_combined_bootstrapGF <- function(x,
                            vars = pred_names_combined(x),#names(importance(x$gf_list[[1]], type = "Weighted", sorted = TRUE)),
                            n_curves = 10,
@@ -1029,7 +1062,10 @@ gg_combined_bootstrapGF <- function(x,
 #' but due to the way bootstrapGradientForest is intended
 #' to be used, an extra parameter, `type` is added.
 #'
-#' `type` is a vector containing elements from
+#' @param object a combinedBootstrapGF object
+#' @param newdata data.frame of new observations to predict. If NULL, use observations
+#' from the first GF object.
+#' @param type is a vector containing elements from
 #' c("mean", "variance", "points", "weight")
 #'
 #' "mean" gives the unweighted mean of the points (default, for
@@ -1046,24 +1082,23 @@ gg_combined_bootstrapGF <- function(x,
 #' for each row of input, x_row is included in the returned
 #' data.frame to match inputs to outputs.
 #'
-#' extrap can take on 2 values, c(TRUE, FALSE)
+#' @param extrap can be TRUE or FALSE
 #'
-#' extrap = TRUE extrapolates, but applies compression so predicted
-#' values approach an asymptote as X moves very far from training values.
-#' extrap_pow is only used with extrap = TRUE, and sets the
-#' compression power. 1/4 gives the 4th root, 1 is equivalent to linear extrapolation
-#' and 0 is equivalent to clipping to the maximum
-#'
-#'
-#' extrap = FALSE return Na outside of the training values. extrap = FALSE only uses
+#' If extrap = FALSE, return NA outside of the training values. extrap = FALSE only uses
 #' models that observed the training data when calculating mean and variance
 #'
-#' ... arguments passed to cumimp
-#' If `type` contains more than one string, a list of
-#' data.frames will be returned, otherwise just a data.frame.
-#' 
-#' TODO: This code is rather spaghetti, eg. activity 4 depends on 2 and 3,
-#' then activity 5 depends on 1 and 4
+#' If extrap = TRUE, then the curves are extrapolated if the new value lies outside
+#' the training values.
+#' @param extrap_pow is only used with extrap = TRUE, and sets the
+#' compression power. 1/4 gives the 4th root. 1 produces linear extrapolation
+#' and 0 clips the extrapolation to the min and max values of Y.
+#'
+#' @param ... arguments passed to gradientForest::cumimp()
+#'
+#' @return A long form data.frame, with $type giving the prediction type.
+#'
+#' @export
+#'
 predict.combinedBootstrapGF <- function(object,
                                             newdata,
                                             type = c("mean"),
@@ -1160,12 +1195,12 @@ predict.combinedBootstrapGF <- function(object,
       is_upper <- tmp_x > x_model[2]
       ## pass the points above the upper limit into compress_extrap_z
       if(any(is_upper)) {
-        predicted[is_upper] <- compress_extrap_z(tmp_x[is_upper] - x_model[2], extrap_pow, grad, y_model[2])
+        predicted[is_upper] <- gfbootstrap:::compress_extrap_z(tmp_x[is_upper] - x_model[2], extrap_pow, grad, y_model[2])
       }
       ## repeat for points below the lower limit
       is_lower <- tmp_x < x_model[1]
       if(any(is_lower)) {
-        predicted[is_lower] <- -compress_extrap_z(-(tmp_x[is_lower] - x_model[1]), extrap_pow, grad, -y_model[1])
+        predicted[is_lower] <- -gfbootstrap:::compress_extrap_z(-(tmp_x[is_lower] - x_model[1]), extrap_pow, grad, -y_model[1])
       }
     }
     ##apply offset
@@ -1219,14 +1254,6 @@ predict.combinedBootstrapGF <- function(object,
 
 }
 
-
-
-
-
-
-
-
-
 #' Huberts Gamma statistic
 #'
 #' Calculates Huberts Gamma statistic
@@ -1249,8 +1276,14 @@ predict.combinedBootstrapGF <- function(object,
 #' This version requires a full matrix for both sim_mat and
 #' member_mat. Using other forms is much more complicated.
 #'
-#' @param sim_mat must be a square matrix equivalent,
-#' @param 
+#' @param sim_mat a square matrix equivalent, all values in the range 0 to 1
+#' @param member_mat square matrix equivalent, 0 if a pair of sites are in different
+#' clusters, 1 if the pair are in the same cluster.
+#' @param norm_z whether to normalize the sim_mat and member_mat into z-scores. See Tseng and Kao 2003
+#'
+#' @return the Hubert Gamma score
+#'
+#' @export
 hubert_gamma <- function(sim_mat, member_mat, norm_z = TRUE){
   assertthat::assert_that(assertthat::are_equal(dim(sim_mat), dim(member_mat)))
 
