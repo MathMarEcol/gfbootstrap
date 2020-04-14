@@ -12,7 +12,7 @@ Encoding: UTF-8
 LazyData: true
 Depends:
     future.apply,
-    testthat
+    assertthat
 Suggests: 
     gradientForest
 Roxygen: list(markdown = TRUE)
