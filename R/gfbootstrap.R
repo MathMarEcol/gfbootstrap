@@ -124,9 +124,9 @@ bootstrapGradientForest <- function(
   ##Calculate offsets
     ##the optimal offset requires knowing the distance between curves for every tree in gfbootstrap
     ##
-  df_dist <- gfbootstrap_dist(gf_bootstrap,
+  df_dist <- gfbootstrap::gfbootstrap_dist(gf_bootstrap,
                               x_samples = 100)
-  offsets <- gfbootstrap_offsets(df_dist)
+  offsets <- gfbootstrap::gfbootstrap_offsets(df_dist)
 
   ##The offsets are applied to the cumimp curves,
   ##but the cumimp curves are calculated
@@ -162,6 +162,9 @@ gfbootstrap_dist <- function(gf_list,
                              offsets = NULL,
                              x_samples = 100){
 
+  if(!require(gradientForest)){
+    stop("gfbootstrap_dist requires the gradientForest package. Please install it from https://r-forge.r-project.org/R/?group_id=973")
+  }
   assertthat::assert_that("gradientForest" %in% class(gf_list[[1]]))
   pred_vars <- names(gf_list[[1]]$X)
   P <- length(pred_vars)
@@ -326,6 +329,10 @@ gg_bootstrapGF <- function(x,
   assertthat::assert_that(is.vector(vars))
   assertthat::assert_that(is.numeric(n_curves))
   assertthat::assert_that(length(n_curves) == 1)
+
+  if(!require(gradientForest)){
+    stop("gg_bootstrapGF requires the gradientForest package. Please install it from https://r-forge.r-project.org/R/?group_id=973")
+  }
 
   if (n_curves >= length(x$gf_list)) {
     gf_ind <- seq_along(x$gf_list)
@@ -563,7 +570,7 @@ predict.bootstrapGradientForest <- function(object,
   assertthat::assert_that(inherits(newdata,"data.frame"))
 
   newnames <- names(newdata)
-  gf_preds <- pred_names(object)
+  gf_preds <- gfbootstrap::pred_names(object)
   if(!all(ok <- newnames %in% gf_preds)) {
     badnames <- paste(newnames[!ok], collapse=", ")
     stop(paste("the following predictors are not in any of the bootstrapGradientForests:\n\t",badnames,sep=""))
@@ -814,9 +821,9 @@ combinedBootstrapGF <- function(...,
   gf_combine$weight <- weight
   class(gf_combine) <- c("combinedBootstrapGF", "list")
 
-  gf_combine_dist <- combine_gfbootstrap_dist(gf_combine, x_samples = x_samples)
+  gf_combine_dist <- gfbootstrap::combine_gfbootstrap_dist(gf_combine, x_samples = x_samples)
 
-  gf_combine$offsets <- gfbootstrap_offsets(gf_combine_dist)
+  gf_combine$offsets <- gfbootstrap::gfbootstrap_offsets(gf_combine_dist)
 
   return(gf_combine)
 }
@@ -861,7 +868,7 @@ combine_gfbootstrap_dist <- function(gf_combine,
                                      x_samples = 100){
   assertthat::assert_that(inherits(gf_combine, "combinedBootstrapGF"))
 
-  pred_vars <- pred_names_combined(gf_combine) 
+  pred_vars <- gfbootstrap::pred_names_combined(gf_combine) 
   P <- length(pred_vars)
   K <- length(gf_combine$gf_list)
 
@@ -977,7 +984,7 @@ combine_gfbootstrap_dist <- function(gf_combine,
 #'
 #' @export
 gg_combined_bootstrapGF <- function(x,
-                           vars = pred_names_combined(x),#names(importance(x$gf_list[[1]], type = "Weighted", sorted = TRUE)),
+                           vars = gfbootstrap::pred_names_combined(x),#names(importance(x$gf_list[[1]], type = "Weighted", sorted = TRUE)),
                            n_curves = 10,
                            debug = TRUE) {
   assertthat::assert_that(inherits(x, "combinedBootstrapGF"))
@@ -1111,10 +1118,10 @@ predict.combinedBootstrapGF <- function(object,
   assertthat::assert_that(extrap %in% c(TRUE, FALSE))
   assertthat::assert_that(length(extrap) == 1)
   if (missing(newdata)){
-    newdata <- object$gf_list[[1]]$X[,pred_names_combined(object)]
+    newdata <- object$gf_list[[1]]$X[,gfbootstrap::pred_names_combined(object)]
   } else {
     newnames <- names(newdata)
-    gf_preds <- pred_names_combined(object)
+    gf_preds <- gfbootstrap::pred_names_combined(object)
     if(!all(ok <- newnames %in% gf_preds)) {
       badnames <- paste(newnames[!ok], collapse=", ")
       stop(paste("the following predictors are not in any of the bootstrapGradientForests:\n\t",badnames,sep=""))
