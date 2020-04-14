@@ -2,7 +2,7 @@
 % Please edit documentation in R/gfbootstrap.R
 \name{gg_bootstrapGF}
 \alias{gg_bootstrapGF}
-\title{Predict bootstrapped GF object}
+\title{plot cumimp for bootStrapGradientForest}
 \usage{
 gg_bootstrapGF(
   x,
@@ -11,15 +11,18 @@ gg_bootstrapGF(
   debug = TRUE
 )
 }
-\description{
-Given a fitted gfbootstrap object, predict new points.
+\arguments{
+\item{x}{a bootStrapGradientForest object}
+
+\item{vars}{names of predictor variables to use}
+
+\item{n_curves}{Number of curves to plot. If less than the number of bootstrap samples, then samples are chosen randomly}
+
+\item{debug}{additional plots and messages if TRUE}
 }
-\details{
-Unlike most predict functions, you get multiple output rows per input row.
-The id_cols parameter allows you to specify which columns should be used as identifiers for each input row.
-The total number of output rows is gfbootstrap$nbootstraps * nrow(predict_points)
-
+\value{
+Returns a ggplot object, ready for plotting.
+}
+\description{
 plot cumimp for bootStrapGradientForest
-
-Returns a ggplot object, ready for plotting
 }

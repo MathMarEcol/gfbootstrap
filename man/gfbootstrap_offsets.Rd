@@ -6,6 +6,12 @@
 \usage{
 gfbootstrap_offsets(x)
 }
+\arguments{
+\item{x}{the data.frame returned by gfbootstrap_dist()}
+}
+\value{
+numeric offsets data.frame, bootstrap sample by predictor
+}
 \description{
 The distance values returned by \code{gfbootstrap_dist()}
 are used to calculate the optimal offsets.
@@ -13,7 +19,4 @@ Given a predictor, an offset is calculated for each
 gf cumulative importance curve,
 such that the total area between the curves is
 minimised.
-}
-\details{
-\param x the data.frame returned by gfbootstrap_dist()
 }

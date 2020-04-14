@@ -6,6 +6,12 @@
 \usage{
 pred_names(obj)
 }
+\arguments{
+\item{obj}{gfbootstrap object}
+}
+\value{
+vector of character strings, naming the predictors
+}
 \description{
 Gradient Forest will drop variables that are
 never used in any splits. During bootstrapping,

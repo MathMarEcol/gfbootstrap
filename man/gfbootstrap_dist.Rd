@@ -6,6 +6,16 @@
 \usage{
 gfbootstrap_dist(gf_list, offsets = NULL, x_samples = 100)
 }
+\arguments{
+\item{gf_list}{a bootstrapped list of Gradient Forest objects, created by bootStrapGradientForest()}
+
+\item{offsets}{data.frame of sample by predictors, giving the offset for each curve. The default, NULL, sets offsets to 0.}
+
+\item{x_samples}{integer number of points sampled along each cumulative importance curve, evenly spaced.#'}
+}
+\value{
+Returns a data.frame of areas between curves for each pair and each predictor.
+}
 \description{
 Given a list of gradient forest objects,
 gfbootstrap_dist calculates the area bewteen curves for
@@ -15,9 +25,5 @@ each pair of gf objects.
 gfbootstrap_dist() assumes that every GF model has the same
 set of predictor variables.
 
-If an offsets vector is provided, it is included in the result.
-
-x_samples integer number of points sampled along each cumulative importance curve, evenly spaced.
-
-Returns a data.frame of areas between curves for each pair and each predictor.
+If an offsets vector is provided, it is used to calculate the result.
 }

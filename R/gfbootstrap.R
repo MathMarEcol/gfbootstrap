@@ -18,20 +18,13 @@
 #' Not specifying a `future` plan will default to standard sequential processing.
 #' See future.seed
 #'
-#' @param x
-#' @param predictor.vars
-#' @param response.vars
+#' @param x data.frame, rows as observations, columns are either predictors or responses
+#' @param predictor.vars columns in x that are predictors
+#' @param response.vars columns in x that are responses
 #' @param nboostraps number of bootstrapped models to fit
 #' @param nsamples number of samples taken at each bootstrapped model fit
-#' @param mtry
-#' @param transform
-#' @param maxLevel
-#' @param corr.threshold
-#' @param compact
-#' @param nbin
-#' @param trace
 #'
-#' @import future.apply
+#' see gradientForest::gradientForest() for mtry, transform, maxLevel, corr.threshold, compact, nbin, trance parameters
 #'
 #' @export
 #'

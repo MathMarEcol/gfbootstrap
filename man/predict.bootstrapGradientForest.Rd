@@ -8,21 +8,17 @@
   object,
   newdata,
   type = c("mean"),
-  extrap = "compress",
+  extrap = TRUE,
   extrap_pow = 1/4,
   ...
 )
 }
-\description{
-Generic S3 function for predicting bootstrapGradientForest
-objects.
-}
-\details{
-The behaviour is very similar to predict.gradientForest,
-but due to the way bootstrapGradientForest is intended
-to be used, an extra parameter, \code{type} is added.
+\arguments{
+\item{object}{a bootstrapGradientForest object}
 
-\code{type} is a vector containing elements from
+\item{newdata}{data.frame of new observations to predict. If NULL, use observations from object.}
+
+\item{type}{is a vector containing elements from
 c("mean", "variance", "points", "weight")
 
 "mean" gives the unweighted mean of the points (default, for
@@ -37,27 +33,33 @@ k (number of bootstrapped models) rows will be returned
 
 Due to the fact that many rows of output can be returned
 for each row of input, x_row is included in the returned
-data.frame to match inputs to outputs.
+data.frame to match inputs to outputs.}
 
-extrap can take on 4 values, c("clip", "linear", "compress", "na")
+\item{extrap}{can be TRUE or FALSE
 
-"linear" extrapolate each model linearly using average gradient
-
-"clip" returns the maximum or minimum Y if X exceeds training values
-
-"compress" extrapolates, but applies compression so predicted
-values approach an asymptote as X moves veary far from training values.
-extrap_pow is only used with "compress", and sets the
-compression power. 1/4 gives the 4th root, 1 is equivalent to "linear"
-and 0 is equivalent to "clip"
-
-TODO: just use "compress" with edge cases for linear and clip
-TODO: This code is rather spaghetti, eg. activity 4 depends on 2 and 3,
-then activity 5 depends on 1 and 4
-
-"na" return Na outside of the training values. "na" only uses
+If extrap = FALSE, return NA outside of the training values. extrap = FALSE only uses
 models that observed the training data when calculating mean and variance
-... arguments passed to cumimp
-If \code{type} contains more than one string, a list of
-data.frames will be returned, otherwise just a data.frame.
+
+If extrap = TRUE, then the curves are extrapolated if the new value lies outside
+the training values.}
+
+\item{extrap_pow}{is only used with extrap = TRUE, and sets the
+compression power. 1/4 gives the 4th root. 1 produces linear extrapolation
+and 0 clips the extrapolation to the min and max values of Y.}
+
+\item{...}{arguments passed to gradientForest::cumimp()
+TODO: This code is rather spaghetti, eg. activity 4 depends on 2 and 3,
+then activity 5 depends on 1 and 4}
+}
+\value{
+A long form data.frame, with $type giving the prediction type.
+}
+\description{
+Generic S3 function for predicting bootstrapGradientForest
+objects.
+}
+\details{
+The behaviour is very similar to predict.gradientForest,
+but due to the way bootstrapGradientForest is intended
+to be used, an extra parameter, \code{type} is added.
 }

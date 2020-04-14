@@ -20,9 +20,15 @@ bootstrapGradientForest(
 )
 }
 \arguments{
-\item{nsamples}{number of samples taken at each bootstrapped model fit}
+\item{x}{data.frame, rows as observations, columns are either predictors or responses}
 
-\item{trace}{}
+\item{predictor.vars}{columns in x that are predictors}
+
+\item{response.vars}{columns in x that are responses}
+
+\item{nsamples}{number of samples taken at each bootstrapped model fit
+
+see gradientForest::gradientForest() for mtry, transform, maxLevel, corr.threshold, compact, nbin, trance parameters}
 
 \item{nboostraps}{number of bootstrapped models to fit}
 }
