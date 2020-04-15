@@ -697,6 +697,7 @@ predict.bootstrapGradientForest <- function(object,
   #   out["weight"] <- object$gf_list[[1]]
   # }
 
+  class(out) <- c("data.frame", "predict.bootstrapGradientForest")
   return(out)
 
 }
@@ -1250,6 +1251,7 @@ predict.combinedBootstrapGF <- function(object,
   #   out["weight"] <- object$gf_list[[1]]
   # }
 
+  class(out) <- c("data.frame", "predict.combinedBootstrapGF")
   return(out)
 
 }
