@@ -90,12 +90,10 @@ bootstrapGradientForest <- function(
                                                 trace=trace
                                                 )
       }, error = function(e){
-        message("GF model failed to fit, restarting")
-        message(e)
+        message(paste0("GF model failed to fit, restarting: ", conditionMessage(e)))
         return(NULL)
     }, warning = function(e){
-      message("GF model failed to fit, restarting")
-      message(e)
+      message(paste0("GF model failed to fit, restarting: ", conditionMessage(e)))
       return(NULL)
     })
 
@@ -785,9 +783,9 @@ combinedBootstrapGF <- function(...,
     stop("Every argument must be a gradientForest")
 
   if(is.null(gf_names <- names(gf_list)))
-    gf_names <- paste("F",1:ngear,sep="")
+    gf_names <- paste("F",1:n_gf,sep="")
   if (any(empty <- gf_names==""))
-    gf_names[empty] <- paste("F",1:ngear,sep="")[empty]
+    gf_names[empty] <- paste("F",1:n_gf,sep="")[empty]
 
   names(gf_list) <- gf_names
 
