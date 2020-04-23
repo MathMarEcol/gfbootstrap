@@ -90,12 +90,10 @@ bootstrapGradientForest <- function(
                                                 trace=trace
                                                 )
       }, error = function(e){
-        message("GF model failed to fit, restarting")
-        message(e)
+        message(paste0("GF model failed to fit, restarting: ", conditionMessage(e)))
         return(NULL)
     }, warning = function(e){
-      message("GF model failed to fit, restarting")
-      message(e)
+      message(paste0("GF model failed to fit, restarting: ", conditionMessage(e)))
       return(NULL)
     })
 
