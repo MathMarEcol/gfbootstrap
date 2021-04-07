@@ -127,7 +127,7 @@ bootstrapGradientForest <- function(
     ##
   df_dist <- gfbootstrap:::gfbootstrap_dist_fast(out,
                               x_samples = 100)
-  out$offset <- gfbootstrap:::gfbootstrap_offsets_fast(df_dist)
+  out$offsets <- gfbootstrap:::gfbootstrap_offsets_fast(df_dist)
 
   return(out)
 }
@@ -494,10 +494,10 @@ gg_bootstrapGF <- function(x,
       message(paste0("gg_bootstrapgf: Tree [", gf,
                      "], had no occurences of predictor [", pred,
                      "]"))
-      return(data.frame(var = NULL, gf = NULL, x = NULL, y = NULL, stringsAsFactors = FALSE))
+      return(data.frame(pred = NULL, gf = NULL, x = NULL, y = NULL, stringsAsFactors = FALSE))
     }
     curve_data$y <- curve_data$y + x$offsets[gf, pred]
-    return(data.frame(var = pred, gf = gf, x = curve_data$x, y = curve_data$y, stringsAsFactors = FALSE))
+    return(data.frame(pred = pred, gf = gf, x = curve_data$x, y = curve_data$y, stringsAsFactors = FALSE))
 
   }, x = x)
   )
@@ -512,10 +512,10 @@ gg_bootstrapGF <- function(x,
         message(paste0("gg_bootstrapgf: Tree [", gf,
                        "], had no occurences of predictor [", pred,
                        "]"))
-        return(data.frame(var = NULL, gf = NULL, x = NULL, y = NULL, stringsAsFactors = FALSE))
+        return(data.frame(pred = NULL, gf = NULL, x = NULL, y = NULL, stringsAsFactors = FALSE))
       }
 
-      return(data.frame(var = pred, gf = gf, x = curve_data$x, y = curve_data$y, stringsAsFactors = FALSE))
+      return(data.frame(pred = pred, gf = gf, x = curve_data$x, y = curve_data$y, stringsAsFactors = FALSE))
 
     }, x = x)
     )
@@ -678,17 +678,9 @@ compress_extrap_z <- function(x, p, a, b){
 #' for each row of input, x_row is included in the returned
 #' data.frame to match inputs to outputs.
 #'
-#' @param extrap can be TRUE or FALSE
-#'
-#' If extrap = FALSE, return NA outside of the training values. extrap = FALSE only uses
-#' models that observed the training data when calculating mean and variance
-#'
-#' If extrap = TRUE, then the curves are extrapolated if the new value lies outside
-#' the training values.
-#' @param extrap_pow is only used with extrap = TRUE, and sets the
-#' compression power. 1/4 gives the 4th root. 1 produces linear extrapolation
-#' and 0 clips the extrapolation to the min and max values of Y.
-#'
+#' @param extrap passed on to predict.gradientForest
+#' possible valuse are NA, TRUE, FALSE, or a number in the range [0,1]
+
 #' @param ... arguments passed to gradientForest::cumimp()
 #' TODO: This code is rather spaghetti, eg. activity 4 depends on 2 and 3,
 #' then activity 5 depends on 1 and 4
@@ -711,8 +703,8 @@ predict.bootstrapGradientForest <- function(object,
   assertthat::assert_that(inherits(newdata,"data.frame"))
 
   newnames <- names(newdata)
-  gf_preds <- gfbootstrap::pred_names(object)
-  if(!all(ok <- newnames %in% gf_preds)) {
+  pred_vars <- gfbootstrap::pred_names(object)
+  if(!all(ok <- newnames %in% pred_vars)) {
     badnames <- paste(newnames[!ok], collapse=", ")
     stop(paste("the following predictors are not in any of the bootstrapGradientForests:\n\t",badnames,sep=""))
   }
@@ -811,14 +803,14 @@ predict.bootstrapGradientForest <- function(object,
 
   ##Now generate summary results
   ##tidyverse style
-  out <- data.frame(type = NA, var = NA, x_row = NA, x = NA, y = NA, gf_model = NA)[numeric(0), ]
+  out <- data.frame(type = NA, pred = NA, x_row = NA, x = NA, y = NA, gf_model = NA)[numeric(0), ]
   all_opts <- c("mean", "variance", "points", "weight")
   if ("mean" %in% type){
-    out <- rbind(out, do.call("rbind", future.apply::future_by(predict_all,
-                            list(var = predict_all$var,
-                                 x_row = predict_all$x_row),
+    out <- rbind(out, do.call("rbind", future.apply::future_by(gf_predictions_long,
+                            list(pred = gf_predictions_long$pred,
+                                 x_row = gf_predictions_long$x_row),
                             function(x) {
-                              data.frame(type = "mean", var = unique(x$var), x_row = unique(x$x_row), x = unique(x$x),
+                              data.frame(type = "mean", pred = unique(x$pred), x_row = unique(x$x_row), x = unique(x$x),
                                          y = mean(x$y), gf_model = NA)
                             }
 
@@ -826,19 +818,19 @@ predict.bootstrapGradientForest <- function(object,
     )
   }
   if ("variance" %in% type){
-    out <- rbind(out, do.call("rbind", future.apply::future_by(predict_all,
-                            list(var = predict_all$var,
-                                 x_row = predict_all$x_row),
+    out <- rbind(out, do.call("rbind", future.apply::future_by(gf_predictions_long,
+                            list(pred = gf_predictions_long$pred,
+                                 x_row = gf_predictions_long$x_row),
                             function(x) {
-                              data.frame(type = "variance",var = unique(x$var), x_row  = unique(x$x_row), x = unique(x$x),
+                              data.frame(type = "variance",pred = unique(x$pred), x_row  = unique(x$x_row), x = unique(x$x),
                                          y = var(x$y), gf_model = NA)
                             }
       ))
     )
   }
   if ("points" %in% type){
-    out <- rbind(out, data.frame(type = "points", predict_all[,c("var", "x_row", "x", "gf_model")],
-                          y = predict_all$y)
+    out <- rbind(out, data.frame(type = "points", gf_predictions_long[,c("pred", "x_row", "x", "gf_model")],
+                          y = gf_predictions_long$y)
     )
   }
   # if("weight" %in% type){
@@ -1153,10 +1145,10 @@ gg_combined_bootstrapGF <- function(x,
       message(paste0("gg_combined_bootstrapgf: Tree [", gf,
                      "], had no occurences of predictor [", pred,
                      "]"))
-      return(data.frame(var = NULL, gf = NULL, x = NULL, y = NULL, stringsAsFactors = FALSE))
+      return(data.frame(pred = NULL, gf = NULL, x = NULL, y = NULL, stringsAsFactors = FALSE))
     }
     curve_data$y <- curve_data$y + x$offsets[gf, pred]
-    return(data.frame(var = pred, gf = gf, x = curve_data$x, y = curve_data$y, stringsAsFactors = FALSE))
+    return(data.frame(pred = pred, gf = gf, x = curve_data$x, y = curve_data$y, stringsAsFactors = FALSE))
 
   }, x = x)
   )
@@ -1171,10 +1163,10 @@ gg_combined_bootstrapGF <- function(x,
         message(paste0("gg_combined_bootstrapgf: Tree [", gf,
                        "], had no occurences of predictor [", pred,
                        "]"))
-        return(data.frame(var = NULL, gf = NULL, x = NULL, y = NULL, stringsAsFactors = FALSE))
+        return(data.frame(pred = NULL, gf = NULL, x = NULL, y = NULL, stringsAsFactors = FALSE))
       }
 
-      return(data.frame(var = pred, gf = gf, x = curve_data$x, y = curve_data$y, stringsAsFactors = FALSE))
+      return(data.frame(pred = pred, gf = gf, x = curve_data$x, y = curve_data$y, stringsAsFactors = FALSE))
 
     }, x = x)
     )
@@ -1284,13 +1276,13 @@ predict.combinedBootstrapGF <- function(object,
       message(paste0("Tree [", gf,
                      "], had no occurences of predictor [", pred,
                      "]"))
-      return(data.frame(var = NULL, gf = NULL, x_row = NULL, x = NULL, y = NULL, stringsAsFactors = FALSE))
+      return(data.frame(pred = NULL, gf = NULL, x_row = NULL, x = NULL, y = NULL, stringsAsFactors = FALSE))
     }
     if(length(curve_data$x) < 2){
       message(paste0("Not using Tree [", gf,
                      "], it had only one occurences of predictor [", pred,
                      "]: x = ", curve_data$x, "\n"))
-      return(data.frame(var = NULL, gf = NULL, x_row = NULL, x = NULL, y = NULL, stringsAsFactors = FALSE))
+      return(data.frame(pred = NULL, gf = NULL, x_row = NULL, x = NULL, y = NULL, stringsAsFactors = FALSE))
     }
     ##predictor exists
     ## get the cumimp for the predictor: curve_data
@@ -1358,21 +1350,21 @@ predict.combinedBootstrapGF <- function(object,
     ## with all the results, calculate and return statistics.
 
 
-    return(data.frame(var = pred, gf_model = gf, x_row = seq_along(newdata[,pred]), x = newdata[,pred], y = predicted_offset, stringsAsFactors = FALSE))
+    return(data.frame(pred = pred, gf_model = gf, x_row = seq_along(newdata[,pred]), x = newdata[,pred], y = predicted_offset, stringsAsFactors = FALSE))
 
   }, x = object)
   )
 
   ##Now generate summary results
   ##tidyverse style
-  out <- data.frame(type = NA, var = NA, x_row = NA, x = NA, y = NA, gf_model = NA)[numeric(0), ]
+  out <- data.frame(type = NA, pred = NA, x_row = NA, x = NA, y = NA, gf_model = NA)[numeric(0), ]
   all_opts <- c("mean", "variance", "points", "weight")
   if ("mean" %in% type){
     out <- rbind(out, do.call("rbind", future.apply::future_by(predict_all,
-                            list(var = predict_all$var,
+                            list(pred = predict_all$pred,
                                  x_row = predict_all$x_row),
                             function(x) {
-                              data.frame(type = "mean", var = unique(x$var), x_row = unique(x$x_row), x = unique(x$x),
+                              data.frame(type = "mean", pred = unique(x$pred), x_row = unique(x$x_row), x = unique(x$x),
                                          y = mean(x$y), gf_model = NA)
                             }
 
@@ -1381,17 +1373,17 @@ predict.combinedBootstrapGF <- function(object,
   }
   if ("variance" %in% type){
     out <- rbind(out, do.call("rbind", future.apply::future_by(predict_all,
-                            list(var = predict_all$var,
+                            list(pred = predict_all$pred,
                                  x_row = predict_all$x_row),
                             function(x) {
-                              data.frame(type = "variance",var = unique(x$var), x_row  = unique(x$x_row), x = unique(x$x),
+                              data.frame(type = "variance",pred = unique(x$pred), x_row  = unique(x$x_row), x = unique(x$x),
                                          y = var(x$y), gf_model = NA)
                             }
       ))
     )
   }
   if ("points" %in% type){
-    out <- rbind(out, data.frame(type = "points", predict_all[,c("var", "x_row", "x", "gf_model")],
+    out <- rbind(out, data.frame(type = "points", predict_all[,c("pred", "x_row", "x", "gf_model")],
                           y = predict_all$y)
     )
   }
