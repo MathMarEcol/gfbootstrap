@@ -34,14 +34,14 @@
 #' data(CoMLsimulation)
 #' predictor.vars <- colnames(Xsimulation)
 #' response.vars <- colnames(Ysimulation)
-#' demobootstrap <- boostrapGradientForest(x = data.frame(Ysimulation,Xsimulation),
+#' demobootstrap <- bootstrapGradientForest(x = data.frame(Ysimulation,Xsimulation),
 #' predictor.vars = predictor.vars,
 #' response.vars = response.vars,
 #' nbootstrap = 100, #small, should be 500 or 1000 in a real experiment
 #' compact = T, nbin = 200,
 #' transform = NULL,
 #' corr.threshold = 0.5,
-#' maxLevel = floor(log2(length(.y)*0.368/2)),
+#' maxLevel = floor(log2(length(response.vars)*0.368/2)),
 #' trace = TRUE
 #' )
 bootstrapGradientForest <- function(
