@@ -709,96 +709,60 @@ predict.bootstrapGradientForest <- function(object,
   }
 
 
+  ##Reworking to use the updated GF predict funcions
+  ##
+
+  ## get all predictions
+  gf_predictions_list <- future.apply::future_lapply(object$gf_list, function(gf, newdata, pred_vars, extrap) {
+    gf_preds <- as.character(unique(gf$res$var))
+    gf_predictions <-  predict.gradientForest(gf, newdata[ , gf_preds], extrap = extrap)
+    missing_preds <- setdiff(pred_vars, gf_preds)
+    full_prediction <- as.data.frame(lapply(pred_vars, function(pred, missing_preds, gf_predictions) {
+      if(pred %in% missing_preds) {
+        return(stats::setNames(list(rep(NA, length.out = nrow(gf_predictions))),
+                               nm = pred)
+               )
+      } else {
+        return(stats::setNames(list(gf_predictions[, pred]),
+                               nm = pred)
+               )
+       }
+      } , missing_preds = missing_preds, gf_predictions))
+
+    return(full_prediction)
+    }, newdata = newdata, pred_vars = pred_vars, extrap = extrap)
+
+  newdata_long <- stats::reshape(
+                           newdata,
+                           idvar = "x_row",
+                           varying = names(newdata),
+                           times = names(newdata),
+                           v.names = "x",
+                           direction = "long",
+                           timevar = "pred")
+  gf_predictions_long <- do.call("rbind",
+                                 future.apply::future_lapply(
+                                                 seq_along(gf_predictions_list),
+                                                 function(i, gf_predictions_list, object, newdata_long) {
+                                                   gf_pred <- gf_predictions_list[[i]]
+                                                   gf_pred <- gf_pred + object$offsets[rep(i, length.out = nrow(gf_pred)), ]
+                                                   gf_pred_long <- stats::reshape(
+                                                                         gf_pred,
+                                                                         idvar = "x_row",
+                                                                         varying = names(gf_pred),
+                                                                         times = names(gf_pred),
+                                                                         v.names = "y",
+                                                                         direction = "long",
+                                                                         timevar = "pred")
+                                                   gf_pred_full <- merge(gf_pred_long, newdata_long, by = c("pred", "x_row"))
+                                                   gf_pred_full <- data.frame(gf = i, gf_pred_full)
+                                                   return(gf_pred_full)
+                                                   }, gf_predictions_list = gf_predictions_list, object = object, newdata_long = newdata_long)
+                                 )
+
+
+
   ##Calculating means and variances requires all points anyway.
-
-
-  predict_groups <- expand.grid(newnames, seq_along(object$gf_list))
-  predict_all <- do.call("rbind", future.apply::future_apply(predict_groups, 1, function(cg, x){
-    pred <- as.character(cg[1])
-    gf <- as.integer(cg[2])
-    if (is.element(pred, levels(x$gf_list[[gf]]$res$var)) ){
-      curve_data <- gradientForest::cumimp(x$gf_list[[gf]], pred)
-    } else {
-      message(paste0("Tree [", gf,
-                     "], had no occurences of predictor [", pred,
-                     "]"))
-      return(data.frame(var = NULL, gf = NULL, x_row = NULL, x = NULL, y = NULL, stringsAsFactors = FALSE))
-    }
-    if(length(curve_data$x) < 2){
-      message(paste0("Not using Tree [", gf,
-                     "], it had only one occurences of predictor [", pred,
-                     "]: x = ", curve_data$x, "\n"))
-      return(data.frame(var = NULL, gf = NULL, x_row = NULL, x = NULL, y = NULL, stringsAsFactors = FALSE))
-    }
-    ##predictor exists
-    ## get the cumimp for the predictor: curve_data
-    ## figure out the range of the original data in x and y
-    x_model <- range(curve_data$x)
-    y_model <- range(curve_data$y)
-    ## figure out the range of the new data
-    ##   for x, just look at it
-    x_new <- range(newdata[,pred], na.rm = TRUE)
-    ## determine the range of the y data by either
-    ##   if "clip", just keep old y max and min
-    if (extrap == "clip"){
-      interp_method <- 2 #approxfun, set extremes to max y_model
-      y_new <- y_model
-    } else if (extrap == "na"){
-      interp_method <- 1 #approxfun, set extremes to na
-      y_new <- y_model
-    } else {
-      interp_method <- 2
-    ##   linearly extrapolate, using only the min and max of the new and old xy data
-      y_new <- y_model[1] + (x_new - x_model[1]) * diff(y_model)/diff(x_model)
-    }
-    ## add the new extremes to the cumimp vector
-    is_prepend <- FALSE
-    is_append <- FALSE
-    if(extrap != "na") {
-      if (x_new[1] < x_model[1]) {
-        is_prepend <- TRUE
-        curve_data$x <- c(x_new[1], curve_data$x)
-        curve_data$y <- c(y_new[1], curve_data$y)
-      }
-      if (x_new[2] > x_model[2]) {
-        is_append <- TRUE
-        curve_data$x <- c(curve_data$x, x_new[2])
-        curve_data$y <- c(curve_data$y, y_new[2])
-      }
-    }
-    ## use approxfun to interpolate along the discretized cumimp vector
-    tmp_func <- approxfun(curve_data, rule = interp_method)
-    ## for all extrap != "na", get the linear interpolation and apply further processing
-    predicted <- tmp_func(newdata[,pred])
-    if (extrap == "compress") {
-      tmp_y <- predicted
-      tmp_x <- newdata[, pred]
-      ## from rphildyerphd::gf_extrap_compress
-      ## find gradient of slope
-      grad <- diff(y_model)/diff(x_model)
-      ## find range of cumimp: x_model, y_model
-      ## find points above the upper limit
-      is_upper <- tmp_x > x_model[2]
-      ## pass the points above the upper limit into compress_extrap_z
-      if(any(is_upper)) {
-        predicted[is_upper] <- gfbootstrap:::compress_extrap_z(tmp_x[is_upper] - x_model[2], extrap_pow, grad, y_model[2])
-      }
-      ## repeat for points below the lower limit
-      is_lower <- tmp_x < x_model[1]
-      if(any(is_lower)) {
-        predicted[is_lower] <- -gfbootstrap:::compress_extrap_z(-(tmp_x[is_lower] - x_model[1]), extrap_pow, grad, -y_model[1])
-      }
-    }
-    ##apply offset
-    predicted_offset <- predicted + x$offsets[gf, pred]
-    ## repeat for all models in the set
-    ## with all the results, calculate and return statistics.
-
-
-    return(data.frame(var = pred, gf_model = gf, x_row = seq_along(newdata[,pred]), x = newdata[,pred], y = predicted_offset, stringsAsFactors = FALSE))
-
-  }, x = object)
-  )
 
   ##Now generate summary results
   ##tidyverse style
