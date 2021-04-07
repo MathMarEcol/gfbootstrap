@@ -692,7 +692,6 @@ predict.bootstrapGradientForest <- function(object,
                                             newdata,
                                             type = c("mean"),
                                             extrap=TRUE,
-                                            extrap_pow = 1/4,
                                             ...){
 
   assertthat::assert_that("bootstrapGradientForest" %in% class(object))
