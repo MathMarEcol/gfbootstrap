@@ -110,14 +110,7 @@ bootstrapGradientForest <- function(
     }
     return(gf_list)
 
-  })
-
-  ##Calculate offsets
-    ##the optimal offset requires knowing the distance between curves for every tree in gfbootstrap
-    ##
-  df_dist <- gfbootstrap::gfbootstrap_dist(gf_bootstrap,
-                              x_samples = 100)
-  offsets <- gfbootstrap::gfbootstrap_offsets(df_dist)
+  }, future.seed = TRUE)
 
   ##The offsets are applied to the cumimp curves,
   ##but the cumimp curves are calculated
@@ -126,9 +119,16 @@ bootstrapGradientForest <- function(
   ## and apply the offsets on demand.
   out <- list(
     gf_list = gf_bootstrap,
-    offset = offsets
+    offsets = NULL
   )
   class(out) <- "bootstrapGradientForest"
+  ##Calculate offsets
+    ##the optimal offset requires knowing the distance between curves for every tree in gfbootstrap
+    ##
+  df_dist <- gfbootstrap:::gfbootstrap_dist_fast(out,
+                              x_samples = 100)
+  out$offset <- gfbootstrap:::gfbootstrap_offsets_fast(df_dist)
+
   return(out)
 }
 
@@ -149,19 +149,22 @@ bootstrapGradientForest <- function(
 #' @return Returns a data.frame of areas between curves for each pair and each predictor.
 #'
 #' @export
-gfbootstrap_dist <- function(gf_list,
-                             offsets = NULL,
+gfbootstrap_dist <- function(gf_boot,
                              x_samples = 100){
 
   if(!require(gradientForest)){
     stop("gfbootstrap_dist requires the gradientForest package. Please install it from https://r-forge.r-project.org/R/?group_id=973")
   }
+
+  gf_list <- gf_boot$gf_list
+
   assertthat::assert_that("gradientForest" %in% class(gf_list[[1]]))
-  pred_vars <- names(gf_list[[1]]$X)
+  pred_vars <- pred_names(gf_boot)
   P <- length(pred_vars)
   K <- length(gf_list)
 
-  if(!is.null(offsets)){
+  if(!is.null(gf_boot$offsets)){
+    offsets <- gf_boot$offsets
     assertthat::assert_that(nrow(offsets) == K)
     assertthat::assert_that(ncol(offsets) == P)
   } else {
@@ -260,6 +263,124 @@ gfbootstrap_dist <- function(gf_list,
   return(d_ij_full)
 }
 
+gfbootstrap_dist_fast <- function(
+                                  gf_boot,
+                             offsets = NULL,
+                             x_samples = 100){
+
+  if(!require(gradientForest)){
+    stop("gfbootstrap_dist requires the gradientForest package. Please install it from https://r-forge.r-project.org/R/?group_id=973")
+  }
+  gf_list <- gf_boot$gf_list
+
+  assertthat::assert_that("gradientForest" %in% class(gf_list[[1]]))
+  pred_vars <- pred_names(gf_boot)
+  P <- length(pred_vars)
+  K <- length(gf_list)
+
+  if(!is.null(gf_boot$offsets)){
+    offsets <- gf_boot$offsets
+    assertthat::assert_that(nrow(offsets) == K)
+    assertthat::assert_that(ncol(offsets) == P)
+  } else {
+    offsets <- matrix(
+      rep.int(0, K*P),
+      nrow = K,
+      ncol = P
+    )
+    offsets <- as.data.frame(offsets)
+    names(offsets) <- pred_vars
+  }
+
+  gf_pred_cross <- expand.grid(seq_along(gf_list), pred_vars)
+  names(gf_pred_cross) <- c("gf", "pred")
+  ##precalculate scores
+  ## need the min and max ci for each predictor
+  ## using min and max, predict for all gf, using extrap = NA and the same x_samples points
+  pred_ci_range <- future.apply::future_lapply(pred_vars, function(pred, gf_list){
+    gf_ci_range <- do.call("rbind", future.apply::future_lapply(gf_list, function(gf, pred) {
+              ##calculate overlap
+              if (is.element(pred, levels(gf$res$var)) ){
+                x_cumimp_i <- gradientForest::cumimp(gf, pred)$x
+                if(length(x_cumimp_i) >= 2){
+                  return(data.frame(xmin = min(x_cumimp_i), xmax = max(x_cumimp_i)))
+                }
+                return(data.frame(xmin = NA, xmax = NA))
+              } else {
+                message(paste0("Tree [", i,
+                               "], had no occurences of predictor [", pred,
+                               "]"))
+                return(data.frame(xmin = NA, xmax = NA))
+              }
+    }, pred = pred)
+    )
+    return(list(xmin = min(gf_ci_range$xmin, na.rm = TRUE), xmax = max(gf_ci_range$xmax, na.rm = TRUE)))
+    }, gf_list = gf_list)
+  names(pred_ci_range) <- pred_vars
+
+  ## generate predictions for each gf and var
+  newdata_df <- do.call("cbind", future.apply::future_lapply(pred_vars, function(pred, pred_ci_range, x_samples){
+    pred_range <- pred_ci_range[[pred]]
+    points <- seq(pred_range$xmin, pred_range$xmax, length.out = x_samples)
+    return(points)
+  }, pred_ci_range = pred_ci_range, x_samples = x_samples)
+  )
+  colnames(newdata_df) <- pred_vars
+  newdata_df <- as.data.frame(newdata_df)
+
+  ## Generate predictions
+  gf_predictions_list <- future.apply::future_lapply(gf_list, function(gf, newdata_df, pred_vars) {
+    gf_preds <- as.character(unique(gf$res$var))
+    gf_predictions <-  predict.gradientForest(gf, newdata_df[ , gf_preds], extrap = NA)
+    missing_preds <- setdiff(pred_vars, gf_preds)
+    full_prediction <- as.data.frame(lapply(pred_vars, function(pred, missing_preds, gf_predictions) {
+      if(pred %in% missing_preds) {
+        return(stats::setNames(list(rep(NA, length.out = nrow(gf_predictions))),
+                               nm = pred)
+               )
+      } else {
+        return(stats::setNames(list(gf_predictions[, pred]),
+                               nm = pred)
+               )
+       }
+      } , missing_preds = missing_preds, gf_predictions))
+
+    return(full_prediction)
+    }, newdata_df = newdata_df, pred_vars = pred_vars)
+
+  ##generate pairs
+  d_ij <- expand.grid(i = seq.int(K), j = seq.int(K))
+
+  d_ij_diag <- d_ij[d_ij$i < d_ij$j, ]
+
+  ## For each predictor, generate a distance long-form distance matrix between gf objects
+  d_ij_pred <- future.apply::future_lapply(pred_vars, function(pred, gf_predictions_list, d_ij_diag, offsets) {
+    dist_est <- apply(d_ij_diag, 1,  function(ind, pred, gf_predictions_list, offsets) {
+      ind <- as.data.frame(t(ind))
+      i <- ind$i
+      j <- ind$j
+
+      gf_i <- gf_predictions_list[[i]][ , pred]
+      gf_j <- gf_predictions_list[[j]][ , pred]
+
+      d <-  mean((gf_i + offsets[pred][i,]) - (gf_j + offsets[pred][j,]), na.rm = TRUE)
+      }, pred = pred, gf_predictions_list = gf_predictions_list, offsets = offsets)
+
+    d_ij_dist <- data.frame(d_ij_diag, d = dist_est)
+    d_ji <- data.frame(d_ij_dist$j,
+                       d_ij_dist$i,
+                       -d_ij_dist$d)
+    names(d_ji) <- names(d_ij_dist)
+
+    d_ij_full <- rbind(d_ij_dist, d_ji)
+    return(d_ij_full)
+  }, gf_predictions_list = gf_predictions_list, d_ij_diag = d_ij_diag, offsets = offsets)
+  names(d_ij_pred) <- pred_vars
+  return(d_ij_pred)
+
+}
+
+
 #' Calculate opimal offsets
 #'
 #' The distance values returned by `gfbootstrap_dist()`
@@ -297,6 +418,35 @@ gfbootstrap_offsets <- function(x){
                           mat_A = mat_A
                     )
 
+  offsets_new <- as.data.frame(lapply(offsets_by, as.vector))
+  return(offsets_new)
+}
+
+gfbootstrap_offsets_fast <- function(x){
+
+  ## see ../../align_gf_curves.pdf
+  ## this is the final form of a method
+  ## that minimizes mean squared error between
+  ## curves.
+  K <- max(x[[1]]$j)
+  ##find optimal offsets for each predictor
+  mat_A <- K*diag(K) - matrix(1, nrow = K, ncol = K)
+
+  ##Set the offset of the first curve to be 0,
+  ##so all offsets are relative to the first curve.
+  ##This is neccessary to create a unique solution
+  ##because the system has an infinite number of solutions
+  ##eg. distances do not change if ALL curves are shifted by +10
+  mat_A[1, ] <- 0
+  mat_A[1,1] <- 1
+  offsets_by <- future.apply::future_lapply(x, function(d_pred, mat_A){
+                            vec_b <- aggregate(d_pred$d, by = list(alpha_i = d_pred$i), function(x){sum(x, na.rm = TRUE)})
+                            vec_b$x[1] <- 0
+                            vec_b <- - vec_b
+                            solve(mat_A, vec_b$x)
+                          },
+                          mat_A = mat_A
+                    )
   offsets_new <- as.data.frame(lapply(offsets_by, as.vector))
   return(offsets_new)
 }
@@ -346,7 +496,7 @@ gg_bootstrapGF <- function(x,
                      "]"))
       return(data.frame(var = NULL, gf = NULL, x = NULL, y = NULL, stringsAsFactors = FALSE))
     }
-    curve_data$y <- curve_data$y + x$offset[gf, pred]
+    curve_data$y <- curve_data$y + x$offsets[gf, pred]
     return(data.frame(var = pred, gf = gf, x = curve_data$x, y = curve_data$y, stringsAsFactors = FALSE))
 
   }, x = x)
@@ -649,7 +799,7 @@ predict.bootstrapGradientForest <- function(object,
       }
     }
     ##apply offset
-    predicted_offset <- predicted + x$offset[gf, pred]
+    predicted_offset <- predicted + x$offsets[gf, pred]
     ## repeat for all models in the set
     ## with all the results, calculate and return statistics.
 
@@ -1005,7 +1155,7 @@ gg_combined_bootstrapGF <- function(x,
                      "]"))
       return(data.frame(var = NULL, gf = NULL, x = NULL, y = NULL, stringsAsFactors = FALSE))
     }
-    curve_data$y <- curve_data$y + x$offset[gf, pred]
+    curve_data$y <- curve_data$y + x$offsets[gf, pred]
     return(data.frame(var = pred, gf = gf, x = curve_data$x, y = curve_data$y, stringsAsFactors = FALSE))
 
   }, x = x)
@@ -1203,7 +1353,7 @@ predict.combinedBootstrapGF <- function(object,
       }
     }
     ##apply offset
-    predicted_offset <- predicted + x$offset[gf, pred]
+    predicted_offset <- predicted + x$offsets[gf, pred]
     ## repeat for all models in the set
     ## with all the results, calculate and return statistics.
 
