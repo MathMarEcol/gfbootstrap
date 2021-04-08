@@ -7,11 +7,10 @@
 gfbootstrap_dist(gf_boot, x_samples = 100)
 }
 \arguments{
-\item{x_samples}{integer number of points sampled along each cumulative importance curve, evenly spaced.#'}
+\item{gf_boot}{a bootstrapGradientForest object}
 
-\item{gf_list}{a bootstrapped list of Gradient Forest objects, created by bootStrapGradientForest()}
-
-\item{offsets}{data.frame of sample by predictors, giving the offset for each curve. The default, NULL, sets offsets to 0.}
+\item{x_samples}{integer number of points sampled along each cumulative importance curve, evenly spaced.
+higher values will give more accurate answers, but consume more time and resources}
 }
 \value{
 Returns a data.frame of areas between curves for each pair and each predictor.
