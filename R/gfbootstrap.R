@@ -535,22 +535,22 @@ gg_bootstrapGF <- function(x,
     return(list(
       no_offset = ggplot2::ggplot(data = curve_no_offset, mapping = ggplot2::aes(x = x, y = y, group = gf, color = as.factor(gf))) +
     ggplot2::geom_line() +
-  ggplot2::facet_wrap(ggplot2::vars(var), scales = "free_x"),
+  ggplot2::facet_wrap(ggplot2::vars(pred), scales = "free_x"),
   no_offset_stretch =  ggplot2::ggplot(data = curve_no_offset, mapping = ggplot2::aes(x = x, y = y, group = gf, color = as.factor(gf))) +
     ggplot2::geom_line() +
-    ggplot2::facet_wrap(ggplot2::vars(var), scales = "free"),
+    ggplot2::facet_wrap(ggplot2::vars(pred), scales = "free"),
   offset = ggplot2::ggplot(data = curve_all, mapping = ggplot2::aes(x = x, y = y, group = gf, color = as.factor(gf))) +
     ggplot2::geom_line() +
-    ggplot2::facet_wrap(ggplot2::vars(var), scales = "free_x"),
+    ggplot2::facet_wrap(ggplot2::vars(pred), scales = "free_x"),
   offset_stretch = ggplot2::ggplot(data = curve_all, mapping = ggplot2::aes(x = x, y = y, group = gf, color = as.factor(gf))) +
     ggplot2::geom_line() +
-    ggplot2::facet_wrap(ggplot2::vars(var), scales = "free")
+    ggplot2::facet_wrap(ggplot2::vars(pred), scales = "free")
   ))
   }
     return(
       ggplot2::ggplot(data = curve_all, mapping = ggplot2::aes(x = x, y = y, group = gf, color = as.factor(gf))) +
       ggplot2::geom_line() +
-      ggplot2::facet_wrap(ggplot2::vars(var), scales = "free_x")
+      ggplot2::facet_wrap(ggplot2::vars(pred), scales = "free_x")
     )
 }
 
@@ -983,22 +983,22 @@ gg_combined_bootstrapGF <- function(x,
     return(list(
       no_offset = ggplot2::ggplot(data = curve_no_offset, mapping = ggplot2::aes(x = x, y = y, group = gf, color = as.factor(gf))) +
     ggplot2::geom_line() +
-  ggplot2::facet_wrap(ggplot2::vars(var), scales = "free_x"),
+  ggplot2::facet_wrap(ggplot2::vars(pred), scales = "free_x"),
   no_offset_stretch =  ggplot2::ggplot(data = curve_no_offset, mapping = ggplot2::aes(x = x, y = y, group = gf, color = as.factor(gf))) +
     ggplot2::geom_line() +
-    ggplot2::facet_wrap(ggplot2::vars(var), scales = "free"),
+    ggplot2::facet_wrap(ggplot2::vars(pred), scales = "free"),
   offset = ggplot2::ggplot(data = curve_all, mapping = ggplot2::aes(x = x, y = y, group = gf, color = as.factor(gf))) +
     ggplot2::geom_line() +
-    ggplot2::facet_wrap(ggplot2::vars(var), scales = "free_x"),
+    ggplot2::facet_wrap(ggplot2::vars(pred), scales = "free_x"),
   offset_stretch = ggplot2::ggplot(data = curve_all, mapping = ggplot2::aes(x = x, y = y, group = gf, color = as.factor(gf))) +
     ggplot2::geom_line() +
-    ggplot2::facet_wrap(ggplot2::vars(var), scales = "free")
+    ggplot2::facet_wrap(ggplot2::vars(pred), scales = "free")
   ))
   }
     return(
       ggplot2::ggplot(data = curve_all, mapping = ggplot2::aes(x = x, y = y, group = gf, color = as.factor(gf))) +
       ggplot2::geom_line() +
-      ggplot2::facet_wrap(ggplot2::vars(var), scales = "free_x")
+      ggplot2::facet_wrap(ggplot2::vars(pred), scales = "free_x")
     )
 }
 
