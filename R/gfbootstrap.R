@@ -125,9 +125,9 @@ bootstrapGradientForest <- function(
   ##Calculate offsets
     ##the optimal offset requires knowing the distance between curves for every tree in gfbootstrap
     ##
-  df_dist <- gfbootstrap:::gfbootstrap_dist_fast(out,
+  df_dist <- gfbootstrap:::gfbootstrap_dist(out,
                               x_samples = 100)
-  out$offsets <- gfbootstrap:::gfbootstrap_offsets_fast(df_dist)
+  out$offsets <- gfbootstrap:::gfbootstrap_offsets(df_dist)
 
   return(out)
 }
@@ -143,128 +143,15 @@ bootstrapGradientForest <- function(
 #'
 #' If an offsets vector is provided, it is used to calculate the result.
 #'
-#' @param gf_list a bootstrapped list of Gradient Forest objects, created by bootStrapGradientForest()
-#' @param offsets data.frame of sample by predictors, giving the offset for each curve. The default, NULL, sets offsets to 0.
-#' @param x_samples integer number of points sampled along each cumulative importance curve, evenly spaced.#'
+#' @param gf_boot a bootstrapGradientForest object
+#' @param x_samples integer number of points sampled along each cumulative importance curve, evenly spaced.
+#' higher values will give more accurate answers, but consume more time and resources
+#'
 #' @return Returns a data.frame of areas between curves for each pair and each predictor.
 #'
 #' @export
-gfbootstrap_dist <- function(gf_boot,
-                             x_samples = 100){
-
-  if(!require(gradientForest)){
-    stop("gfbootstrap_dist requires the gradientForest package. Please install it from https://r-forge.r-project.org/R/?group_id=973")
-  }
-
-  gf_list <- gf_boot$gf_list
-
-  assertthat::assert_that("gradientForest" %in% class(gf_list[[1]]))
-  pred_vars <- pred_names(gf_boot)
-  P <- length(pred_vars)
-  K <- length(gf_list)
-
-  if(hasName(gf_boot, "offsets") & !is.null(gf_combine$offsets)){
-    offsets <- gf_boot$offsets
-    assertthat::assert_that(nrow(offsets) == K)
-    assertthat::assert_that(ncol(offsets) == P)
-  } else {
-    offsets <- matrix(
-      rep.int(0, K*P),
-      nrow = K,
-      ncol = P
-    )
-    offsets <- as.data.frame(offsets)
-    names(offsets) <- pred_vars
-  }
-
-  ##generate pairs
-  d_ij <- expand.grid(i = seq.int(K), j = seq.int(K))
-
-  d_ij_diag <- d_ij[d_ij$i < d_ij$j, ]
-
-  ##for each pair, find area between curves
-  d_ij_pred <- do.call("rbind", future.apply::future_apply(d_ij_diag, 1, function(ind){
-    ind <- as.data.frame(t(ind))
-    i <- ind$i
-    j <- ind$j
-    assertthat::assert_that( "gradientForest" %in% class(gf_list[[i]]))
-    assertthat::assert_that( "gradientForest" %in% class(gf_list[[j]]))
-    tmp <- do.call("rbind",
-            future.apply::future_lapply(pred_vars, function(pred, gf_list, offsets){
-              ##calculate overlap
-              if (is.element(pred, levels(gf_list[[i]]$res$var)) ){
-                x_cumimp_i <- gradientForest::cumimp(gf_list[[i]], pred)$x
-              } else {
-                message(paste0("Tree [", i,
-                               "], had no occurences of predictor [", pred,
-                               "]"))
-                return(data.frame(i, j, pred,  d=0))
-              }
-              if (is.element(pred, levels(gf_list[[j]]$res$var)) ){
-                x_cumimp_j <- gradientForest::cumimp(gf_list[[j]], pred)$x
-              } else {
-                message(paste0("Tree [", j,
-                               "], had no occurences of predictor [", pred,
-                               "]"))
-                return(data.frame(i, j, pred,  d=0))
-              }
-
-              ## message(names(gf_list[[i]]$X))
-              ## message(names(gf_list[[j]]$X))
-              x_range <- c(max(
-                  min(x_cumimp_i),
-                  min(x_cumimp_j)
-                ),
-                min(
-                  max(x_cumimp_i),
-                  max(x_cumimp_j)
-                )
-                )
-              if(x_range[2] <= x_range[1]){
-
-                message(paste0("Tree [", i,
-                               "] and Tree [", j,
-                               "], for predictor [", pred,
-                               "] had no overlap in cumimp curves"))
-                return(data.frame(i, j, pred,  d=0))
-
-              }
-              ##predict x_samples points within overlapping ranges
-              x_sample_points <- data.frame(seq(x_range[1], x_range[2],
-                                                       length.out = x_samples))
-              names(x_sample_points) <- pred
-              ## message("i")
-              x_i <- gradientForest::predict.gradientForest(gf_list[[i]],
-                                                            x_sample_points,
-                                                            extrap = FALSE)
-              ## message("i passed. j")
-              x_j <- gradientForest::predict.gradientForest(gf_list[[j]],
-                                                            x_sample_points,
-                                                            extrap = FALSE)
-              ## message("j passed")
-              d <-  sum((x_i + offsets[pred][i,]) - (x_j + offsets[pred][j,]))
-              d <- d/x_samples
-              return(data.frame(i, j, pred, d))
-            }, gf_list = gf_list, offsets = offsets)
-            )
-    return(tmp)
-  })
-  )
-
-  ## fill in the lower triange, d_ji
-  ##take d_ij, and negate $d, swap i, j
-  d_ji <- data.frame(d_ij_pred$j,
-                     d_ij_pred$i,
-                     d_ij_pred$pred,
-                     -d_ij_pred$d)
-  names(d_ji) <- names(d_ij_pred)
-
-  d_ij_full <- rbind(d_ij_pred, d_ji)
-  return(d_ij_full)
-}
-
-gfbootstrap_dist_fast <- function(
-                                  gf_boot,
+gfbootstrap_dist <- function(
+                             gf_boot,
                              x_samples = 100){
 
   if(!require(gradientForest)){
@@ -408,33 +295,6 @@ gfbootstrap_dist_fast <- function(
 #' @export
 gfbootstrap_offsets <- function(x){
 
-  K <- max(x$j)
-  ##find optimal offsets for each predictor
-  mat_A <- K*diag(K) - matrix(1, nrow = K, ncol = K)
-
-  ##Set the offset of the first curve to be 0,
-  ##so all offsets are relative to the first curve.
-  ##This is neccessary to create a unique solution
-  ##because the system has an infinite number of solutions
-  ##eg. distances do not change if ALL curves are shifted by +10
-  mat_A[1, ] <- 0
-  mat_A[1,1] <- 1
-  offsets_by <- future.apply::future_by(x, list(pred = x$pred),
-                          function(d_pred, mat_A){
-                            vec_b <- aggregate(d_pred$d, by = list(alpha_i = d_pred$i), function(x){sum(x)})
-                            vec_b$x[1] <- 0
-                            vec_b <- - vec_b
-                            solve(mat_A, vec_b$x)
-                          },
-                          mat_A = mat_A
-                    )
-
-  offsets_new <- as.data.frame(lapply(offsets_by, as.vector))
-  return(offsets_new)
-}
-
-gfbootstrap_offsets_fast <- function(x){
-
   ## see ../../align_gf_curves.pdf
   ## this is the final form of a method
   ## that minimizes mean squared error between
@@ -554,113 +414,6 @@ gg_bootstrapGF <- function(x,
     )
 }
 
-
-#' Compression Function
-#'
-#' Copied from rphildyerphd package
-
-#' Helper function to apply power compression to
-#' GF predictions.
-#'
-#' The compressed value lies between a linear extrapolation (ext)
-#' and capping at the maximum known value (cap)
-#'
-#' @description
-#'
-#' The logic is:
-#'
-#' We have two lines:
-#' \deqn{y_{cap} = b}{y_cap = b}
-#' \deqn{y_{ext} = ax + b}{y_ext = ax + b}
-#'
-#' where we set \eqn{x = 0} to be the point where extrapolation begins, so \eqn{y_{cap} = y_{ext}} at \eqn{x = 0}, and
-#' \eqn{b} is the capped value.
-#'
-#' We want to define a third line, \eqn{z(x)}, st.
-#'
-#' \deqn{y_{cap} \le z(x) \le y_{ext} \all x \ge 0}{y_cap <= z(x) <= y_ext AA x >= 0}
-#'
-#' Two clear choices are sigmoid functions that asymptote, and power functions that do not asymptote.
-#'
-#' Here I will apply a power function to allow compositional turnover to grow indefinitely.
-#'
-#' Let \eqn{0 \le p \le 1}{0 <= p <= 1} be the power x is raised to. Then:
-#'
-#' \deqn{z = (x + c)^p + d}
-#'
-#' where \eqn{c,d} are constants.
-#'
-#' \eqn{x+c} for \eqn{p} between 0 and 1 grows faster than linear when \eqn{x+c} is close to 0, but it is also convex and monotonically increasing.
-#' Therefore choosing \eqn{c,d} st. \eqn{y_{cap}(x)}{y_cap} is tangent to \eqn{z(x)} at \eqn{x = 0} will satisfy
-#' \eqn{y_{cap} \le z(x) \le y_{ext} \all x \ge 0}{y_cap <= z(x) <= y_ext AA x >= 0}.
-#'
-#' At the tangent we know:
-#'
-#' \deqn{x = 0}
-#' \deqn{y_{ext}(0) = z(0)}{y_ext(0) = z(0)}
-#' \deqn{y_{ext}'(0) = z'(0)}{y'_ext(0) = z'(0)}
-#'
-#' \deqn{y_{ext}'(0) = z'(0)}{y'_ext(0) = z'(0)}
-#' \deqn{a = p(x+c)^{p-1}}{a = p(x+c)^(p-1)}
-#' \deqn{a = p(c)^{p-1} by x = 0}{a = p(c)^(p-1) by x = 0}
-#' \deqn{c = \frac{a}{p}^\frac{1}{p-1}}{c = (a/p)^(1/(p-1))}
-#'
-#' \deqn{y_{ext}(0) = z(0)}{y_ext(0) = z(0)}
-#' \deqn{b = c^p + d}{b = c^p + d}
-#' \deqn{d = b - c^p}{d = b - c^p}
-#' \deqn{d = b - \frac{a}{p}^\frac{p}{p-1}}{d = b - (a/p)^(p/(p-1))}
-#'
-#' therefore, to compress the extrapolation by power \eqn{p}, use:
-#'
-#' \deqn{z(x) = (x + \frac{a}{p}^\frac{1}{p-1})^p + b - \frac{a}{p}^\frac{p}{p-1}}{z(x) = (x + (a/p)^(1/(p-1)))^p + b - (a/p)^(p/(p-1))}
-#'
-#' When extrapolating into the negative domain, just take the negative of both y and x, then call this function, then negate x and y again.
-#'
-#' @param x numeric vector, all >= 0
-#' @param p power, in range [0, 1]
-#' @param a gradient of linear extrapolation
-#' @param b cap value
-#'
-#' @return numeric vector of compressed values \eqn{b \le z(x) \le ax + b}{b <= z(x) <= ax + b}
-#'
-#' @examples
-#'
-#' a <- 1
-#' p <- 0.25
-#' b <- 1
-#' x <- seq(0, 5, 0.1)
-#'
-#' testthat::expect_true(all(rphildyerphd:::compress_extrap_z(x, p, a, b) <= a*x+b))
-#' testthat::expect_true(all(rphildyerphd:::compress_extrap_z(x, p, a, b) >= b))
-#' testthat::expect_true(all(rphildyerphd:::compress_extrap_z(x, p = 0, a, b) == b))
-#'
-#' testthat::expect_error(rphildyerphd:::compress_extrap_z(x, p = 2, a, b), "p not less than or equal to 1")
-#' testthat::expect_error(rphildyerphd:::compress_extrap_z(x, p, a = -1, b), "a not greater than or equal to 0")
-#' #testthat::expect_true(all(rphildyerphd:::compress_extrap_z(x, p, a = 0, b) == b))
-#' testthat::expect_error(rphildyerphd:::compress_extrap_z(x, p = -1, a, b), "p not greater than or equal to 0")
-#' testthat::expect_error(rphildyerphd:::compress_extrap_z(x = seq(-1, 1, 0.1), p, a, b), "Elements 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 of x >= 0 are not true")
-#'
-#' z <- rphildyerphd:::compress_extrap_z(x, p, a, b)
-#' pl_all <- data.frame(x = x, y = a*x+b, z = z, cap = b)
-#' matplot(pl_all$x, pl_all[,c("y","z", "cap")], type = "l")
-#'
-compress_extrap_z <- function(x, p, a, b){
-
-  assertthat::assert_that(p >=0, p<=1)
-  assertthat::assert_that(a >=0)
-  assertthat::assert_that(all(x >= 0))
-
-  if(p == 1){
-    z <- a * x + b
-  } else if (a == 0 | p == 0){
-    z <- b
-  } else {
-    z <- (x + (a / p) ^ (1/(p-1)) ) ^ p + b - (a / p) ^ (p / (p-1))
-  }
-
-  return(z)
-
-}
 
 #' Predict bootstrapGradientForest
 #'
@@ -881,9 +634,9 @@ combinedBootstrapGF <- function(...,
   gf_combine$weight <- weight
   class(gf_combine) <- c("combinedBootstrapGF", "list")
 
-  gf_combine_dist <- gfbootstrap::gfbootstrap_dist_fast(gf_combine, x_samples = x_samples)
+  gf_combine_dist <- gfbootstrap::gfbootstrap_dist(gf_combine, x_samples = x_samples)
 
-  gf_combine$offsets <- gfbootstrap::gfbootstrap_offsets_fast(gf_combine_dist)
+  gf_combine$offsets <- gfbootstrap::gfbootstrap_offsets(gf_combine_dist)
 
   return(gf_combine)
 }
@@ -1172,59 +925,4 @@ bootstrap_predict_common <- function(object,
 
   return(out)
 }
-
-#' Huberts Gamma statistic
-#'
-#' Calculates Huberts Gamma statistic
-#'
-#' norm_z rescales both x and y
-#' by subtracting the mean and dividing by the
-#' standard deviation.
-#' The norm_z variant is from Tseng and Kao 2003.
-#'
-#' The original Huberts Gamma statistic (Hubert and Levin 1976)
-#' uses x and y as is.
-#'
-#' Zhao et al. 2006 proposes another variant, where
-#' y is defined as the distance between the cluster
-#' centers of site i and site j.
-#' This variant is harder to calculate and gives
-#' a knee rather than a peak.
-#' This variant is not implemented.
-#'
-#' This version requires a full matrix for both sim_mat and
-#' member_mat. Using other forms is much more complicated.
-#'
-#' @param sim_mat a square matrix equivalent, all values in the range 0 to 1
-#' @param member_mat square matrix equivalent, 0 if a pair of sites are in different
-#' clusters, 1 if the pair are in the same cluster.
-#' @param norm_z whether to normalize the sim_mat and member_mat into z-scores. See Tseng and Kao 2003
-#'
-#' @return the Hubert Gamma score
-#'
-#' @export
-hubert_gamma <- function(sim_mat, member_mat, norm_z = TRUE){
-  assertthat::assert_that(assertthat::are_equal(dim(sim_mat), dim(member_mat)))
-
-  if(norm_z){
-    mean_s <- mean(sim_mat)
-    sd_s <- sd(sim_mat)
-    mean_m <- mean(member_mat)
-    sd_m <- sd(member_mat)
-
-    member_mat <- (member_mat - mean_m) / sd_m
-    sim_mat <- (sim_mat - mean_s) / sd_s
-  } else {
-    mean_m <- 0
-    sd_m <- 1
-    mean_s <- 0
-    sd_s <- 1
-  }
-
-  h_gamma <- (1/sum(upper.tri(sim_mat))) *
-    sum((upper.tri(sim_mat)*sim_mat) *
-          member_mat)
-  return(h_gamma)
-}
-
 
