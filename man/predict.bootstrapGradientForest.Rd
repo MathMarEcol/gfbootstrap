@@ -4,14 +4,7 @@
 \alias{predict.bootstrapGradientForest}
 \title{Predict bootstrapGradientForest}
 \usage{
-\method{predict}{bootstrapGradientForest}(
-  object,
-  newdata,
-  type = c("mean"),
-  extrap = TRUE,
-  extrap_pow = 1/4,
-  ...
-)
+\method{predict}{bootstrapGradientForest}(object, newdata, type = c("mean"), extrap = TRUE, ...)
 }
 \arguments{
 \item{object}{a bootstrapGradientForest object}
@@ -35,17 +28,8 @@ Due to the fact that many rows of output can be returned
 for each row of input, x_row is included in the returned
 data.frame to match inputs to outputs.}
 
-\item{extrap}{can be TRUE or FALSE
-
-If extrap = FALSE, return NA outside of the training values. extrap = FALSE only uses
-models that observed the training data when calculating mean and variance
-
-If extrap = TRUE, then the curves are extrapolated if the new value lies outside
-the training values.}
-
-\item{extrap_pow}{is only used with extrap = TRUE, and sets the
-compression power. 1/4 gives the 4th root. 1 produces linear extrapolation
-and 0 clips the extrapolation to the min and max values of Y.}
+\item{extrap}{passed on to predict.gradientForest
+possible valuse are NA, TRUE, FALSE, or a number in the range \link{0,1}}
 
 \item{...}{arguments passed to gradientForest::cumimp()
 TODO: This code is rather spaghetti, eg. activity 4 depends on 2 and 3,

@@ -52,3 +52,31 @@ is that weights must be specified in this call,
 not at the predict.combinedGradientForest() call,
 so offsets for each curve can be calculated now.
 }
+\examples{
+
+library(gradientForest)
+data(CoMLsimulation)
+predictor.vars <- colnames(Xsimulation)
+response.vars <- colnames(Ysimulation)
+demobootstrap1 <- bootstrapGradientForest(x = data.frame(Ysimulation,Xsimulation),
+predictor.vars = predictor.vars,
+response.vars = response.vars[1:6],
+nbootstrap = 100, #small, should be 500 or 1000 in a real experiment
+compact = T, nbin = 200,
+transform = NULL,
+corr.threshold = 0.5,
+maxLevel = floor(log2(length(response.vars)*0.368/2)),
+trace = TRUE
+)
+demobootstrap2 <- bootstrapGradientForest(x = data.frame(Ysimulation,Xsimulation),
+predictor.vars = predictor.vars,
+response.vars = response.vars[1:6+6],
+nbootstrap = 100, #small, should be 500 or 1000 in a real experiment
+compact = T, nbin = 200,
+transform = NULL,
+corr.threshold = 0.5,
+maxLevel = floor(log2(length(response.vars)*0.368/2)),
+trace = TRUE
+)
+democombinedbootstrap <- combinedBootstrapGF(demobootstrap1, demobootstrap2, n_samp = 100)
+}

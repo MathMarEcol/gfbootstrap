@@ -163,7 +163,7 @@ gfbootstrap_dist <- function(gf_boot,
   P <- length(pred_vars)
   K <- length(gf_list)
 
-  if(!is.null(gf_boot$offsets)){
+  if(hasName(gf_boot, "offsets") & !is.null(gf_combine$offsets)){
     offsets <- gf_boot$offsets
     assertthat::assert_that(nrow(offsets) == K)
     assertthat::assert_that(ncol(offsets) == P)
@@ -265,7 +265,6 @@ gfbootstrap_dist <- function(gf_boot,
 
 gfbootstrap_dist_fast <- function(
                                   gf_boot,
-                             offsets = NULL,
                              x_samples = 100){
 
   if(!require(gradientForest)){
@@ -273,12 +272,13 @@ gfbootstrap_dist_fast <- function(
   }
   gf_list <- gf_boot$gf_list
 
-  assertthat::assert_that("gradientForest" %in% class(gf_list[[1]]))
+  assertthat::assert_that(any("gradientForest" %in% class(gf_list[[1]]),
+                              "combinedGradientForest" %in% class(gf_list[[1]])))
   pred_vars <- pred_names(gf_boot)
   P <- length(pred_vars)
   K <- length(gf_list)
 
-  if(!is.null(gf_boot$offsets)){
+  if(hasName(gf_boot, "offsets") & !is.null(gf_boot$offsets)){
     offsets <- gf_boot$offsets
     assertthat::assert_that(nrow(offsets) == K)
     assertthat::assert_that(ncol(offsets) == P)
@@ -298,20 +298,26 @@ gfbootstrap_dist_fast <- function(
   ## need the min and max ci for each predictor
   ## using min and max, predict for all gf, using extrap = NA and the same x_samples points
   pred_ci_range <- future.apply::future_lapply(pred_vars, function(pred, gf_list){
-    gf_ci_range <- do.call("rbind", future.apply::future_lapply(gf_list, function(gf, pred) {
+    gf_ci_range <- do.call("rbind", future.apply::future_lapply(seq_along(gf_list), function(i, pred) {
+      gf <- gf_list[[i]]
               ##calculate overlap
-              if (is.element(pred, levels(gf$res$var)) ){
-                x_cumimp_i <- gradientForest::cumimp(gf, pred)$x
-                if(length(x_cumimp_i) >= 2){
-                  return(data.frame(xmin = min(x_cumimp_i), xmax = max(x_cumimp_i)))
+              tryCatch({
+                 ret <-gradientForest::cumimp(gf, pred)$x
+                if(length(ret) >= 2){
+                  return(data.frame(xmin = min(ret), xmax = max(ret)))
                 }
                 return(data.frame(xmin = NA, xmax = NA))
-              } else {
+              },
+              error = function(e){
+                if(grepl("Predictor [^:space:]* does not belong to", e$message)) {
                 message(paste0("Tree [", i,
                                "], had no occurences of predictor [", pred,
                                "]"))
                 return(data.frame(xmin = NA, xmax = NA))
-              }
+                } else {
+                  stop(e)
+                }
+              })
     }, pred = pred)
     )
     return(list(xmin = min(gf_ci_range$xmin, na.rm = TRUE), xmax = max(gf_ci_range$xmax, na.rm = TRUE)))
@@ -330,8 +336,13 @@ gfbootstrap_dist_fast <- function(
 
   ## Generate predictions
   gf_predictions_list <- future.apply::future_lapply(gf_list, function(gf, newdata_df, pred_vars) {
-    gf_preds <- as.character(unique(gf$res$var))
-    gf_predictions <-  predict.gradientForest(gf, newdata_df[ , gf_preds], extrap = NA)
+    ##
+    if(class(gf)[1] == "combinedGradientForest"){
+      gf_preds <- names(gf$CU)
+    } else if(class(gf)[1] == "gradientForest"){
+      gf_preds <- as.character(unique(gf$res$var))
+    }
+    gf_predictions <-  predict(gf, newdata_df[ , gf_preds], extrap = NA)
     missing_preds <- setdiff(pred_vars, gf_preds)
     full_prediction <- as.data.frame(lapply(pred_vars, function(pred, missing_preds, gf_predictions) {
       if(pred %in% missing_preds) {
@@ -439,7 +450,7 @@ gfbootstrap_offsets_fast <- function(x){
   ##eg. distances do not change if ALL curves are shifted by +10
   mat_A[1, ] <- 0
   mat_A[1,1] <- 1
-  offsets_by <- future.apply::future_lapply(x, function(d_pred, mat_A){
+  offsets_by <- lapply(x, function(d_pred, mat_A){
                             vec_b <- aggregate(d_pred$d, by = list(alpha_i = d_pred$i), function(x){sum(x, na.rm = TRUE)})
                             vec_b$x[1] <- 0
                             vec_b <- - vec_b
@@ -822,6 +833,25 @@ predict.bootstrapGradientForest <- function(object,
 #'
 #' @export
 pred_names <- function(obj) {
+  UseMethod("pred_names")
+}
+
+#' Get predictor names from a gfbootstrap object
+#'
+#' Gradient Forest will drop variables that are
+#' never used in any splits. During bootstrapping,
+#' it is likely that at least one model drops a predictor.
+#'
+#' pred_names() searches all models and finds the
+#' full set of predictors, even if some models only
+#' use a subset.
+#'
+#' @param obj gfbootstrap object
+#'
+#' @return vector of character strings, naming the predictors
+#'
+#' @export
+pred_names.bootstrapGradientForest <- function(obj) {
 unique(do.call("c", future.apply::future_lapply(obj$gf_list,
                                                             function(x){
                                                               levels(x$res$var)
@@ -865,6 +895,33 @@ unique(do.call("c", future.apply::future_lapply(obj$gf_list,
 #'
 #' @export
 #'
+#' @examples
+#'
+#' library(gradientForest)
+#' data(CoMLsimulation)
+#' predictor.vars <- colnames(Xsimulation)
+#' response.vars <- colnames(Ysimulation)
+#' demobootstrap1 <- bootstrapGradientForest(x = data.frame(Ysimulation,Xsimulation),
+#' predictor.vars = predictor.vars,
+#' response.vars = response.vars[1:6],
+#' nbootstrap = 100, #small, should be 500 or 1000 in a real experiment
+#' compact = T, nbin = 200,
+#' transform = NULL,
+#' corr.threshold = 0.5,
+#' maxLevel = floor(log2(length(response.vars)*0.368/2)),
+#' trace = TRUE
+#' )
+#' demobootstrap2 <- bootstrapGradientForest(x = data.frame(Ysimulation,Xsimulation),
+#' predictor.vars = predictor.vars,
+#' response.vars = response.vars[1:6+6],
+#' nbootstrap = 100, #small, should be 500 or 1000 in a real experiment
+#' compact = T, nbin = 200,
+#' transform = NULL,
+#' corr.threshold = 0.5,
+#' maxLevel = floor(log2(length(response.vars)*0.368/2)),
+#' trace = TRUE
+#' )
+#' democombinedbootstrap <- combinedBootstrapGF(demobootstrap1, demobootstrap2, n_samp = 100)
 combinedBootstrapGF <- function(...,
                                 n_samp,
                                 x_samples = 100,
@@ -885,7 +942,7 @@ combinedBootstrapGF <- function(...,
   gf_list <- list(...)
   n_gf <- length(gf_list)
   if(!all(sapply(gf_list,inherits,"bootstrapGradientForest")))
-    stop("Every argument must be a gradientForest")
+    stop("Every argument must be a bootstrapgradientForest")
 
   if(is.null(gf_names <- names(gf_list)))
     gf_names <- paste("F",1:n_gf,sep="")
@@ -898,11 +955,15 @@ combinedBootstrapGF <- function(...,
     length(gf$gf_list)
   })
 
+  ## For each "trial",
+  ## randomly select a gf model from each gfbootstrap
+  ## and create a combinedGradientForest
+  ## from the selected gf models
   combin <- data.frame(lapply(n_gf_boot, function(n, n_samp){
     sample.int(n, n_samp, replace = TRUE)
   }, n_samp = n_samp) )
 
-  gf_combine <- apply(combin, 1, function(samp, gf_list, nbin, method, standardize){
+  gf_combine <- future.apply::future_apply(combin, 1, function(samp, gf_list, nbin, method, standardize){
     gf_samp <- lapply(names(gf_list), function(gf, gf_list, samp){
       gf_list[[gf]]$gf_list[[samp[gf]]]
     }, gf_list = gf_list, samp = samp)
@@ -918,12 +979,15 @@ combinedBootstrapGF <- function(...,
   gf_combine$weight <- weight
   class(gf_combine) <- c("combinedBootstrapGF", "list")
 
-  gf_combine_dist <- gfbootstrap::combine_gfbootstrap_dist(gf_combine, x_samples = x_samples)
+  gf_combine_dist <- gfbootstrap::gfbootstrap_dist_fast(gf_combine, x_samples = x_samples)
 
-  gf_combine$offsets <- gfbootstrap::gfbootstrap_offsets(gf_combine_dist)
+  gf_combine$offsets <- gfbootstrap::gfbootstrap_offsets_fast(gf_combine_dist)
 
   return(gf_combine)
 }
+
+
+
 
 #' Get predictor names from a combined gfbootstrap object
 #'
@@ -940,7 +1004,7 @@ combinedBootstrapGF <- function(...,
 #' @return vector of character strings, naming the predictors
 #'
 #' @export
-pred_names_combined <- function(obj) {
+pred_names.combinedBootstrapGF <- function(obj) {
   unique(do.call("c", future.apply::future_lapply(obj$gf_list,
                                                   function(x){
                                                     ##now each is a combined GF
@@ -965,11 +1029,13 @@ combine_gfbootstrap_dist <- function(gf_combine,
                                      x_samples = 100){
   assertthat::assert_that(inherits(gf_combine, "combinedBootstrapGF"))
 
-  pred_vars <- gfbootstrap::pred_names_combined(gf_combine) 
+  gf_list <- gf_combine$gf_list
+
+  pred_vars <- gfbootstrap::pred_names(gf_combine)
   P <- length(pred_vars)
   K <- length(gf_combine$gf_list)
 
-  if (!is.null(gf_combine$offsets)){
+  if (hasName(gf_combine, "offsets") & !is.null(gf_combine$offsets)){
       assertthat::assert_that(nrow(gf_combine$offsets) == K)
       assertthat::assert_that(ncol(gf_combine$offsets) == P)
   } else {
@@ -979,6 +1045,31 @@ combine_gfbootstrap_dist <- function(gf_combine,
         ncol = P))
       names(gf_combine$offsets) <- pred_vars
   }
+
+  gf_pred_cross <- expand.grid(seq_along(gf_list), pred_vars)
+  names(gf_pred_cross) <- c("gf", "pred")
+
+  pred_ci_range <- future.apply::future_lapply(pred_vars, function(pred, gf_list){
+    gf_ci_range <- do.call("rbind", future.apply::future_lapply(gf_list, function(gf, pred) {
+              ##calculate overlap
+              if (is.element(pred, levels(gf$res$var)) ){
+                x_cumimp_i <- gradientForest::cumimp(gf, pred)$x
+                if(length(x_cumimp_i) >= 2){
+                  return(data.frame(xmin = min(x_cumimp_i), xmax = max(x_cumimp_i)))
+                }
+                return(data.frame(xmin = NA, xmax = NA))
+              } else {
+                message(paste0("Combined GF [", i,
+                               "], had no occurences of predictor [", pred,
+                               "]"))
+                return(data.frame(xmin = NA, xmax = NA))
+              }
+    }, pred = pred)
+    )
+    return(list(xmin = min(gf_ci_range$xmin, na.rm = TRUE), xmax = max(gf_ci_range$xmax, na.rm = TRUE)))
+    }, gf_list = gf_list)
+  names(pred_ci_range) <- pred_vars
+
 
   ##generate pairs
   d_ij <- expand.grid(i = seq.int(K), j = seq.int(K))
@@ -1081,7 +1172,7 @@ combine_gfbootstrap_dist <- function(gf_combine,
 #'
 #' @export
 gg_combined_bootstrapGF <- function(x,
-                           vars = gfbootstrap::pred_names_combined(x),#names(importance(x$gf_list[[1]], type = "Weighted", sorted = TRUE)),
+                           vars = gfbootstrap::pred_names(x),#names(importance(x$gf_list[[1]], type = "Weighted", sorted = TRUE)),
                            n_curves = 10,
                            debug = TRUE) {
   assertthat::assert_that(inherits(x, "combinedBootstrapGF"))
@@ -1215,10 +1306,10 @@ predict.combinedBootstrapGF <- function(object,
   assertthat::assert_that(extrap %in% c(TRUE, FALSE))
   assertthat::assert_that(length(extrap) == 1)
   if (missing(newdata)){
-    newdata <- object$gf_list[[1]]$X[,gfbootstrap::pred_names_combined(object)]
+    newdata <- object$gf_list[[1]]$X[,gfbootstrap::pred_names(object)]
   } else {
     newnames <- names(newdata)
-    gf_preds <- gfbootstrap::pred_names_combined(object)
+    gf_preds <- gfbootstrap::pred_names(object)
     if(!all(ok <- newnames %in% gf_preds)) {
       badnames <- paste(newnames[!ok], collapse=", ")
       stop(paste("the following predictors are not in any of the bootstrapGradientForests:\n\t",badnames,sep=""))

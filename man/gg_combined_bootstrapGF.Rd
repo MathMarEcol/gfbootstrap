@@ -6,7 +6,7 @@
 \usage{
 gg_combined_bootstrapGF(
   x,
-  vars = gfbootstrap::pred_names_combined(x),
+  vars = gfbootstrap::pred_names(x),
   n_curves = 10,
   debug = TRUE
 )
