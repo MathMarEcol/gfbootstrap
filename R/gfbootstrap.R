@@ -705,111 +705,13 @@ predict.bootstrapGradientForest <- function(object,
                                             extrap=TRUE,
                                             ...){
 
-  assertthat::assert_that("bootstrapGradientForest" %in% class(object))
-  assertthat::assert_that(is.logical( extrap) )
-  if (missing(newdata))
-    newdata <- object$gf_list[[1]]$X
-
-  assertthat::assert_that(inherits(newdata,"data.frame"))
-
-  newnames <- names(newdata)
-  pred_vars <- gfbootstrap::pred_names(object)
-  if(!all(ok <- newnames %in% pred_vars)) {
-    badnames <- paste(newnames[!ok], collapse=", ")
-    stop(paste("the following predictors are not in any of the bootstrapGradientForests:\n\t",badnames,sep=""))
-  }
+  out <- gfbootstrap:::bootstrap_predict_common(object,
+                                            newdata,
+                                            type = c("mean"),
+                                            extrap=TRUE,
+                                            ...)
 
 
-  ##Reworking to use the updated GF predict funcions
-  ##
-
-  ## get all predictions
-  gf_predictions_list <- future.apply::future_lapply(object$gf_list, function(gf, newdata, pred_vars, extrap) {
-    gf_preds <- as.character(unique(gf$res$var))
-    gf_predictions <-  predict.gradientForest(gf, newdata[ , gf_preds], extrap = extrap)
-    missing_preds <- setdiff(pred_vars, gf_preds)
-    full_prediction <- as.data.frame(lapply(pred_vars, function(pred, missing_preds, gf_predictions) {
-      if(pred %in% missing_preds) {
-        return(stats::setNames(list(rep(NA, length.out = nrow(gf_predictions))),
-                               nm = pred)
-               )
-      } else {
-        return(stats::setNames(list(gf_predictions[, pred]),
-                               nm = pred)
-               )
-       }
-      } , missing_preds = missing_preds, gf_predictions))
-
-    return(full_prediction)
-    }, newdata = newdata, pred_vars = pred_vars, extrap = extrap)
-
-  newdata_long <- stats::reshape(
-                           newdata,
-                           idvar = "x_row",
-                           varying = names(newdata),
-                           times = names(newdata),
-                           v.names = "x",
-                           direction = "long",
-                           timevar = "pred")
-  gf_predictions_long <- do.call("rbind",
-                                 future.apply::future_lapply(
-                                                 seq_along(gf_predictions_list),
-                                                 function(i, gf_predictions_list, object, newdata_long) {
-                                                   gf_pred <- gf_predictions_list[[i]]
-                                                   gf_pred <- gf_pred + object$offsets[rep(i, length.out = nrow(gf_pred)), ]
-                                                   gf_pred_long <- stats::reshape(
-                                                                         gf_pred,
-                                                                         idvar = "x_row",
-                                                                         varying = names(gf_pred),
-                                                                         times = names(gf_pred),
-                                                                         v.names = "y",
-                                                                         direction = "long",
-                                                                         timevar = "pred")
-                                                   gf_pred_full <- merge(gf_pred_long, newdata_long, by = c("pred", "x_row"))
-                                                   gf_pred_full <- data.frame(gf = i, gf_pred_full)
-                                                   return(gf_pred_full)
-                                                   }, gf_predictions_list = gf_predictions_list, object = object, newdata_long = newdata_long)
-                                 )
-
-
-
-  ##Calculating means and variances requires all points anyway.
-
-  ##Now generate summary results
-  ##tidyverse style
-  out <- data.frame(type = NA, pred = NA, x_row = NA, x = NA, y = NA, gf_model = NA)[numeric(0), ]
-  all_opts <- c("mean", "variance", "points", "weight")
-  if ("mean" %in% type){
-    out <- rbind(out, do.call("rbind", future.apply::future_by(gf_predictions_long,
-                            list(pred = gf_predictions_long$pred,
-                                 x_row = gf_predictions_long$x_row),
-                            function(x) {
-                              data.frame(type = "mean", pred = unique(x$pred), x_row = unique(x$x_row), x = unique(x$x),
-                                         y = mean(x$y), gf_model = NA)
-                            }
-
-                            ))
-    )
-  }
-  if ("variance" %in% type){
-    out <- rbind(out, do.call("rbind", future.apply::future_by(gf_predictions_long,
-                            list(pred = gf_predictions_long$pred,
-                                 x_row = gf_predictions_long$x_row),
-                            function(x) {
-                              data.frame(type = "variance",pred = unique(x$pred), x_row  = unique(x$x_row), x = unique(x$x),
-                                         y = var(x$y), gf_model = NA)
-                            }
-      ))
-    )
-  }
-  if ("points" %in% type){
-    out <- rbind(out, data.frame(type = "points", gf_predictions_long[,c("pred", "x_row", "x", "gf_model")],
-                          y = gf_predictions_long$y)
-    )
-  }
-  # if("weight" %in% type){
-  #   out["weight"] <- object$gf_list[[1]]
-  # }
 
   class(out) <- c("data.frame", "predict.bootstrapGradientForest")
   return(out)
@@ -1150,125 +1052,107 @@ predict.combinedBootstrapGF <- function(object,
                                             newdata,
                                             type = c("mean"),
                                             extrap=TRUE,
-                                            extrap_pow = 1/4,
                                             ...){
 
+  out <- gfbootstrap:::bootstrap_predict_common(object,
+                                            newdata,
+                                            type = c("mean"),
+                                            extrap=TRUE,
+                                            ...)
 
-  assertthat::assert_that(inherits(object, "combinedBootstrapGF"))
-  assertthat::assert_that(extrap %in% c(TRUE, FALSE))
+
+
+  class(out) <- c("data.frame", "predict.combinedBootstrapGF")
+  return(out)
+
+}
+
+#' Internal function
+#'
+#' predicting bootstrapGradientForest and combinedBootstrapGF
+#' have a lot of overlap.
+#'
+#' This function pulls together common operations.
+bootstrap_predict_common <- function(object,
+                                            newdata,
+                                            type = c("mean"),
+                                            extrap=TRUE,
+                                            ...) {
+
   assertthat::assert_that(length(extrap) == 1)
+
   if (missing(newdata)){
     newdata <- object$gf_list[[1]]$X[,gfbootstrap::pred_names(object)]
-  } else {
-    newnames <- names(newdata)
-    gf_preds <- gfbootstrap::pred_names(object)
-    if(!all(ok <- newnames %in% gf_preds)) {
-      badnames <- paste(newnames[!ok], collapse=", ")
-      stop(paste("the following predictors are not in any of the bootstrapGradientForests:\n\t",badnames,sep=""))
-    }
   }
   assertthat::assert_that(inherits(newdata,"data.frame"))
 
-  ##Calculating means and variances requires all points anyway.
+  newnames <- names(newdata)
+  pred_vars <- gfbootstrap::pred_names(object)
+  if(!all(ok <- newnames %in% pred_vars)) {
+    badnames <- paste(newnames[!ok], collapse=", ")
+    stop(paste("the following predictors are not in any of the bootstrapGradientForests:\n\t",badnames,sep=""))
+  }
 
+  ## get all predictions
+  gf_predictions_list <- future.apply::future_lapply(object$gf_list, function(gf, newdata, pred_vars, extrap) {
+    if(class(gf)[1] == "combinedGradientForest"){
+      gf_preds <- names(gf$CU)
+    } else if(class(gf)[1] == "gradientForest"){
+      gf_preds <- as.character(unique(gf$res$var))
+    }
+    gf_predictions <-  predict.gradientForest(gf, newdata[ , gf_preds], extrap = extrap)
+    missing_preds <- setdiff(pred_vars, gf_preds)
+    full_prediction <- as.data.frame(lapply(pred_vars, function(pred, missing_preds, gf_predictions) {
+      if(pred %in% missing_preds) {
+        return(stats::setNames(list(rep(NA, length.out = nrow(gf_predictions))),
+                               nm = pred)
+               )
+      } else {
+        return(stats::setNames(list(gf_predictions[, pred]),
+                               nm = pred)
+               )
+       }
+      } , missing_preds = missing_preds, gf_predictions))
 
-  predict_groups <- expand.grid(newnames, seq_along(object$gf_list))
-  predict_all <- do.call("rbind", future.apply::future_apply(predict_groups, 1, function(cg, x){
-    pred <- as.character(cg[1])
-    gf <- as.integer(cg[2])
-    if (is.element(pred, names(x$gf_list[[gf]]$CU)) ){
-      curve_data <- gradientForest::cumimp(x$gf_list[[gf]], pred, weight = x$weight)
-    } else {
-      message(paste0("Tree [", gf,
-                     "], had no occurences of predictor [", pred,
-                     "]"))
-      return(data.frame(pred = NULL, gf = NULL, x_row = NULL, x = NULL, y = NULL, stringsAsFactors = FALSE))
-    }
-    if(length(curve_data$x) < 2){
-      message(paste0("Not using Tree [", gf,
-                     "], it had only one occurences of predictor [", pred,
-                     "]: x = ", curve_data$x, "\n"))
-      return(data.frame(pred = NULL, gf = NULL, x_row = NULL, x = NULL, y = NULL, stringsAsFactors = FALSE))
-    }
-    ##predictor exists
-    ## get the cumimp for the predictor: curve_data
-    ## figure out the range of the original data in x and y
-    x_model <- range(curve_data$x)
-    y_model <- range(curve_data$y)
-    ## figure out the range of the new data
-    ##   for x, just look at it
-    x_new <- range(newdata[,pred], na.rm = TRUE)
-    ## determine the range of the y data by either
-    ##   if "clip", just keep old y max and min
-    if (extrap) {
-      interp_method <- 2 #approxfun, set extremes to max y_model
-    } else {
-      interp_method <- 1 #approxfun, set extremes to na
-    }
+    return(full_prediction)
+    }, newdata = newdata, pred_vars = pred_vars, extrap = extrap)
 
-    if (extrap_pow == 0 || !extrap){
-      y_new <- y_model
-    } else {
-      ##   linearly extrapolate, using only the min and max of the new and old xy data
-      y_new <- y_model[1] + (x_new - x_model[1]) * diff(y_model)/diff(x_model)
-    }
-    ## add the new extremes to the cumimp vector
-    is_prepend <- FALSE
-    is_append <- FALSE
-    if(extrap) {
-      if (x_new[1] < x_model[1]) {
-        is_prepend <- TRUE
-        curve_data$x <- c(x_new[1], curve_data$x)
-        curve_data$y <- c(y_new[1], curve_data$y)
-      }
-      if (x_new[2] > x_model[2]) {
-        is_append <- TRUE
-        curve_data$x <- c(curve_data$x, x_new[2])
-        curve_data$y <- c(curve_data$y, y_new[2])
-      }
-    }
-    ## use approxfun to interpolate along the discretized cumimp vector
-    tmp_func <- approxfun(curve_data, rule = interp_method)
-    ## for all extrap != "na", get the linear interpolation and apply further processing
-    predicted <- tmp_func(newdata[,pred])
-    if (extrap) {
-      tmp_y <- predicted
-      tmp_x <- newdata[, pred]
-      ## from rphildyerphd::gf_extrap_compress
-      ## find gradient of slope
-      grad <- diff(y_model)/diff(x_model)
-      ## find range of cumimp: x_model, y_model
-      ## find points above the upper limit
-      is_upper <- tmp_x > x_model[2]
-      ## pass the points above the upper limit into compress_extrap_z
-      if(any(is_upper)) {
-        predicted[is_upper] <- gfbootstrap:::compress_extrap_z(tmp_x[is_upper] - x_model[2], extrap_pow, grad, y_model[2])
-      }
-      ## repeat for points below the lower limit
-      is_lower <- tmp_x < x_model[1]
-      if(any(is_lower)) {
-        predicted[is_lower] <- -gfbootstrap:::compress_extrap_z(-(tmp_x[is_lower] - x_model[1]), extrap_pow, grad, -y_model[1])
-      }
-    }
-    ##apply offset
-    predicted_offset <- predicted + x$offsets[gf, pred]
-    ## repeat for all models in the set
-    ## with all the results, calculate and return statistics.
-
-
-    return(data.frame(pred = pred, gf_model = gf, x_row = seq_along(newdata[,pred]), x = newdata[,pred], y = predicted_offset, stringsAsFactors = FALSE))
-
-  }, x = object)
-  )
+  newdata_long <- stats::reshape(
+                           newdata,
+                           idvar = "x_row",
+                           varying = names(newdata),
+                           times = names(newdata),
+                           v.names = "x",
+                           direction = "long",
+                           timevar = "pred")
+  gf_predictions_long <- do.call("rbind",
+                                 future.apply::future_lapply(
+                                                 seq_along(gf_predictions_list),
+                                                 function(i, gf_predictions_list, object, newdata_long) {
+                                                   gf_pred <- gf_predictions_list[[i]]
+                                                   gf_pred <- gf_pred + object$offsets[rep(i, length.out = nrow(gf_pred)), ]
+                                                   gf_pred_long <- stats::reshape(
+                                                                         gf_pred,
+                                                                         idvar = "x_row",
+                                                                         varying = names(gf_pred),
+                                                                         times = names(gf_pred),
+                                                                         v.names = "y",
+                                                                         direction = "long",
+                                                                         timevar = "pred")
+                                                   gf_pred_full <- merge(gf_pred_long, newdata_long, by = c("pred", "x_row"))
+                                                   gf_pred_full <- data.frame(gf = i, gf_pred_full)
+                                                   return(gf_pred_full)
+                                                   }, gf_predictions_list = gf_predictions_list, object = object, newdata_long = newdata_long)
+                                 )
 
   ##Now generate summary results
-  ##tidyverse style
-  out <- data.frame(type = NA, pred = NA, x_row = NA, x = NA, y = NA, gf_model = NA)[numeric(0), ]
+  #out <- data.frame(type = NA, pred = NA, x_row = NA, x = NA, y = NA, gf_model = NA)[numeric(0), ]
+  out <- list()
   all_opts <- c("mean", "variance", "points", "weight")
   if ("mean" %in% type){
-    out <- rbind(out, do.call("rbind", future.apply::future_by(predict_all,
-                            list(pred = predict_all$pred,
-                                 x_row = predict_all$x_row),
+    out$mean <- rbind(out, do.call("rbind", future.apply::future_by(gf_predictions_long,
+                            list(pred = gf_predictions_long$pred,
+                                 x_row = gf_predictions_long$x_row),
                             function(x) {
                               data.frame(type = "mean", pred = unique(x$pred), x_row = unique(x$x_row), x = unique(x$x),
                                          y = mean(x$y), gf_model = NA)
@@ -1278,9 +1162,9 @@ predict.combinedBootstrapGF <- function(object,
     )
   }
   if ("variance" %in% type){
-    out <- rbind(out, do.call("rbind", future.apply::future_by(predict_all,
-                            list(pred = predict_all$pred,
-                                 x_row = predict_all$x_row),
+    out$variance <- rbind(out, do.call("rbind", future.apply::future_by(gf_predictions_long,
+                            list(pred = gf_predictions_long$pred,
+                                 x_row = gf_predictions_long$x_row),
                             function(x) {
                               data.frame(type = "variance",pred = unique(x$pred), x_row  = unique(x$x_row), x = unique(x$x),
                                          y = var(x$y), gf_model = NA)
@@ -1289,17 +1173,12 @@ predict.combinedBootstrapGF <- function(object,
     )
   }
   if ("points" %in% type){
-    out <- rbind(out, data.frame(type = "points", predict_all[,c("pred", "x_row", "x", "gf_model")],
-                          y = predict_all$y)
+    out$points <- rbind(out, data.frame(type = "points", gf_predictions_long[,c("pred", "x_row", "x", "gf_model")],
+                          y = gf_predictions_long$y)
     )
   }
-  # if("weight" %in% type){
-  #   out["weight"] <- object$gf_list[[1]]
-  # }
 
-  class(out) <- c("data.frame", "predict.combinedBootstrapGF")
   return(out)
-
 }
 
 #' Huberts Gamma statistic
