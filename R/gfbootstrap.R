@@ -1031,16 +1031,8 @@ gg_combined_bootstrapGF <- function(x,
 #' for each row of input, x_row is included in the returned
 #' data.frame to match inputs to outputs.
 #'
-#' @param extrap can be TRUE or FALSE
-#'
-#' If extrap = FALSE, return NA outside of the training values. extrap = FALSE only uses
-#' models that observed the training data when calculating mean and variance
-#'
-#' If extrap = TRUE, then the curves are extrapolated if the new value lies outside
-#' the training values.
-#' @param extrap_pow is only used with extrap = TRUE, and sets the
-#' compression power. 1/4 gives the 4th root. 1 produces linear extrapolation
-#' and 0 clips the extrapolation to the min and max values of Y.
+#' @param extrap passed on to predict.gradientForest
+#' possible valuse are NA, TRUE, FALSE, or a number in the range [0,1]
 #'
 #' @param ... arguments passed to gradientForest::cumimp()
 #'
