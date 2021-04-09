@@ -141,7 +141,7 @@ bootstrapGradientForest <- function(
                         trace = trace
   )
 
-  if(any(vapply(gf_bootstrap, is.null, logical(1))){
+  if (any(vapply(gf_bootstrap, is.null, logical(1)))){
     stop(paste0("[", sum(vapply(gf_bootstrap, is.null, logical(1))),
                 "] GradientForest objects failed to fit even after [", max_retries, "] tries"))
   }
