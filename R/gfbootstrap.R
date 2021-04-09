@@ -65,7 +65,21 @@ bootstrapGradientForest <- function(
 
   ##gradientForest is loaded
 
-  gf_bootstrap <- future.apply::future_lapply(1:nbootstrap, function(i){
+  gf_bootstrap <- future.apply::future_lapply(1:nbootstrap, function(i,
+                        x,
+                        predictor.vars,
+                        response.vars,
+                        nbootstrap,
+                        nsamples,
+                        mtry,
+                        transform,
+                        maxLevel,
+                        corr.threshold,
+                        compact,
+                        nbin,
+                        max_retries,
+                        trace
+                                                                     ){
 
     ##Fit GF with a single tree, but otherwise identical calls.
 
@@ -111,7 +125,21 @@ bootstrapGradientForest <- function(
     }
     return(gf_list)
 
-  }, future.seed = TRUE)
+  }, future.seed = TRUE,
+                        x = x,
+                        predictor.vars = predictor.vars,
+                        response.vars = response.vars,
+                        nbootstrap = nbootstrap,
+                        nsamples = nsamples,
+                        mtry = mtry,
+                        transform = transform,
+                        maxLevel = maxLevel,
+                        corr.threshold = corr.threshold,
+                        compact = compact,
+                        nbin = nbin,
+                        max_retries = max_retries,
+                        trace = trace
+  )
 
   if(any(vapply(gf_bootstrap, is.null, logical(1))){
     stop(paste0("[", sum(vapply(gf_bootstrap, is.null, logical(1))),
