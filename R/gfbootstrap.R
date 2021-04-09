@@ -56,6 +56,7 @@ bootstrapGradientForest <- function(
                         corr.threshold=0.5,
                         compact=FALSE,
                         nbin=101,
+                        max_retries = 10,
                         trace=FALSE
 ) {
   if(!require(gradientForest)){
@@ -64,7 +65,7 @@ bootstrapGradientForest <- function(
 
   ##gradientForest is loaded
 
-  gf_bootstrap <- future.apply::future_lapply(X = 1:nbootstrap, function(i){
+  gf_bootstrap <- future.apply::future_lapply(1:nbootstrap, function(i){
 
     ##Fit GF with a single tree, but otherwise identical calls.
 
@@ -74,7 +75,7 @@ bootstrapGradientForest <- function(
 
     valid_model <- FALSE
     tries <- 1
-    while(!valid_model & tries < 10){
+    while(!valid_model & tries < max_retries){
       if(tries > 1) message(paste0("GF model failed to fit. Restarting. i: [", i, "], try: ", tries))
       gf_list <-  tryCatch({
         gradientForest::gradientForest(data = x,
@@ -111,6 +112,11 @@ bootstrapGradientForest <- function(
     return(gf_list)
 
   }, future.seed = TRUE)
+
+  if(any(vapply(gf_bootstrap, is.null, logical(1))){
+    stop(paste0("[", sum(vapply(gf_bootstrap, is.null, logical(1))),
+                "] GradientForest objects failed to fit even after [", max_retries, "] tries"))
+  }
 
   ##The offsets are applied to the cumimp curves,
   ##but the cumimp curves are calculated
