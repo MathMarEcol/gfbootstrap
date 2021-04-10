@@ -892,7 +892,7 @@ bootstrap_predict_common <- function(object,
     } else if(class(gf)[1] == "gradientForest"){
       gf_preds <- as.character(unique(gf$res$var))
     }
-    gf_predictions <-  predict.gradientForest(gf, newdata[ , gf_preds], extrap = extrap)
+    gf_predictions <-  predict(gf, newdata[ , gf_preds], extrap = extrap)
     missing_preds <- setdiff(pred_vars, gf_preds)
     full_prediction <- as.data.frame(lapply(pred_vars, function(pred, missing_preds, gf_predictions) {
       if(pred %in% missing_preds) {
