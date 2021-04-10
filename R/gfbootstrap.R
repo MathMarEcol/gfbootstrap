@@ -245,6 +245,19 @@ gfbootstrap_dist <- function(
     }, gf_list = gf_list)
   names(pred_ci_range) <- pred_vars
 
+  empty_preds <- vapply(pred_ci_range, function(x){!is.finite(x$xmin)},
+    logical(1))
+
+  if(any(empty_preds)){
+    stop(paste0("Some predictors were not selected by any bootstap run.\n",
+                "Increase bootstrap runs, include more samples, or drop weak predictors.\n",
+                "The following predictors were not selected:\n",
+                "====\n",
+                paste(names(empty_preds)[empty_preds], collapse = "\n"),
+                "\n====")
+         )
+  }
+
   ## generate predictions for each gf and var
   newdata_df <- do.call("cbind", future.apply::future_lapply(pred_vars, function(pred, pred_ci_range, x_samples){
     pred_range <- pred_ci_range[[pred]]
