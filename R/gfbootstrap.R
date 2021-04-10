@@ -942,32 +942,32 @@ bootstrap_predict_common <- function(object,
   out <- list()
   all_opts <- c("mean", "variance", "points", "weight")
   if ("mean" %in% type){
-    out$mean <- rbind(out, do.call("rbind", future.apply::future_by(gf_predictions_long,
+    out$mean <- do.call("rbind", future.apply::future_by(gf_predictions_long,
                             list(pred = gf_predictions_long$pred,
                                  x_row = gf_predictions_long$x_row),
                             function(x) {
-                              data.frame(type = "mean", pred = unique(x$pred), x_row = unique(x$x_row), x = unique(x$x),
-                                         y = mean(x$y), gf_model = NA)
+                              data.frame(pred = unique(x$pred), x_row = unique(x$x_row), x = unique(x$x),
+                                         y = mean(x$y))
                             }
 
                             ))
-    )
+
   }
   if ("variance" %in% type){
-    out$variance <- rbind(out, do.call("rbind", future.apply::future_by(gf_predictions_long,
+    out$variance <- do.call("rbind", future.apply::future_by(gf_predictions_long,
                             list(pred = gf_predictions_long$pred,
                                  x_row = gf_predictions_long$x_row),
                             function(x) {
-                              data.frame(type = "variance",pred = unique(x$pred), x_row  = unique(x$x_row), x = unique(x$x),
-                                         y = var(x$y), gf_model = NA)
+                              data.frame(pred = unique(x$pred), x_row  = unique(x$x_row), x = unique(x$x),
+                                         y = var(x$y))
                             }
       ))
-    )
+
   }
   if ("points" %in% type){
-    out$points <- rbind(out, data.frame(type = "points", gf_predictions_long[,c("pred", "x_row", "x", "gf_model")],
+    out$points <- data.frame(gf_predictions_long[,c("pred", "x_row", "x", "gf_model")],
                           y = gf_predictions_long$y)
-    )
+
   }
 
   return(out)
