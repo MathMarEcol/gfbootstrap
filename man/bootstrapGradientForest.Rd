@@ -16,6 +16,7 @@ bootstrapGradientForest(
   corr.threshold = 0.5,
   compact = FALSE,
   nbin = 101,
+  max_retries = 10,
   trace = FALSE
 )
 }
