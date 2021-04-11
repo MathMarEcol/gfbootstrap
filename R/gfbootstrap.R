@@ -965,11 +965,8 @@ bootstrap_predict_common <- function(object,
 
   }
   if ("points" %in% type){
-    out$points <- data.frame(gf_predictions_long[,c("pred", "x_row", "x", "gf_model")],
-                          y = gf_predictions_long$y)
-
+    out$points <- gf_predictions_long
   }
 
   return(out)
 }
-
