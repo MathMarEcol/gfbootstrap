@@ -507,13 +507,13 @@ predict.bootstrapGradientForest <- function(object,
 
   out <- gfbootstrap:::bootstrap_predict_common(object,
                                             newdata,
-                                            type = c("mean"),
-                                            extrap=TRUE,
+                                            type = type,
+                                            extrap=extrap,
                                             ...)
 
 
 
-  class(out) <- c("data.frame", "predict.bootstrapGradientForest")
+  class(out) <- c("list", "predict.bootstrapGradientForest")
   return(out)
 
 }
@@ -848,13 +848,13 @@ predict.combinedBootstrapGF <- function(object,
 
   out <- gfbootstrap:::bootstrap_predict_common(object,
                                             newdata,
-                                            type = c("mean"),
-                                            extrap=TRUE,
+                                            type = type,
+                                            extrap=extrap,
                                             ...)
 
 
 
-  class(out) <- c("data.frame", "predict.combinedBootstrapGF")
+  class(out) <- c("list", "predict.combinedBootstrapGF")
   return(out)
 
 }
