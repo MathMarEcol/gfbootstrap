@@ -478,7 +478,11 @@ gg_bootstrapGF <- function(x,
 #' "mean" gives the unweighted mean of the points (default, for
 #' consistency with other predict functions)
 #'
-#' "variance" gives the unweighted variance of the points
+#' "diagonal" gives the unweighted variance of the points,
+#' but only allows diagonal variance, that is, the variance
+#' of each predictor independently.
+#'
+#' "variance" gives the unweighted variance matrix of the points
 #'
 #' "points" returns all the points, so for each new x row,
 #' k (number of bootstrapped models) rows will be returned
@@ -820,7 +824,11 @@ gg_combined_bootstrapGF <- function(x,
 #' "mean" gives the unweighted mean of the points (default, for
 #' consistency with other predict functions)
 #'
-#' "variance" gives the unweighted variance of the points
+#' "diagonal" gives the unweighted variance of the points,
+#' but only allows diagonal variance, that is, the variance
+#' of each predictor independently.
+#'
+#' "variance" gives the unweighted variance matrix of the points
 #'
 #' "points" returns all the points, so for each new x row,
 #' k (number of bootstrapped models) rows will be returned
@@ -953,8 +961,8 @@ bootstrap_predict_common <- function(object,
                             ))
 
   }
-  if ("variance" %in% type){
-    out$variance <- do.call("rbind", future.apply::future_by(gf_predictions_long,
+  if ("diagonal" %in% type){
+    out$diagonal <- do.call("rbind", future.apply::future_by(gf_predictions_long,
                             list(pred = gf_predictions_long$pred,
                                  x_row = gf_predictions_long$x_row),
                             function(x) {
@@ -962,6 +970,25 @@ bootstrap_predict_common <- function(object,
                                          y = var(x$y))
                             }
       ))
+
+  }
+  if ("variance" %in% type){
+    out$variance <- future.apply::future_by(gf_predictions_long,
+                            list(x_row = gf_predictions_long$x_row),
+                            function(x, pred_vars) {
+
+                              site_wide <- stats::reshape(
+                                                    x,
+                                                    idvar = "gf",
+                                                    timevar = "pred",
+                                                    v.names = "y",
+                                                    direction = "wide",
+                                                    drop = c("x_row", "x"),
+                              )
+                              names(site_wide) <- sub("^y.", "", names(site_wide))
+                              cov(site_wide[, pred_vars])
+                            }, pred_vars = pred_vars, simplify = FALSE
+      )
 
   }
   if ("points" %in% type){

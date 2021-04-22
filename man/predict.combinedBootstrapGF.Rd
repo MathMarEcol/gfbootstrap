@@ -18,7 +18,11 @@ c("mean", "variance", "points", "weight")
 "mean" gives the unweighted mean of the points (default, for
 consistency with other predict functions)
 
-"variance" gives the unweighted variance of the points
+"diagonal" gives the unweighted variance of the points,
+but only allows diagonal variance, that is, the variance
+of each predictor independently.
+
+"variance" gives the unweighted variance matrix of the points
 
 "points" returns all the points, so for each new x row,
 k (number of bootstrapped models) rows will be returned
