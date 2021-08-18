@@ -12,8 +12,9 @@ Encoding: UTF-8
 LazyData: true
 Depends:
     future.apply,
-    assertthat
-Suggests: 
+    assertthat,
+    extendedForest,
     gradientForest
+Suggests: 
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.1.1

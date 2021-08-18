@@ -997,3 +997,79 @@ bootstrap_predict_common <- function(object,
 
   return(out)
 }
+
+#' Get variable importance from a bootstrap Gradient Forest
+#'
+#' Finds the overall importance of each predictor by averaging
+#' the importance of each predictor from each bootstrap run.
+#' Predictors with more importance are better predictors of the
+#' response variables.
+#'
+#' returns a named vector of predictor importances, possibly sorted.
+#' @param x A bootstrapGradientForest object
+#' @param type What kind of importance to use. See importance.gradientForest in the gradientForest package for more details.
+#' @param sort Should the predictors be sorted in order of importance?
+#' @export
+#' @importFrom extendedForest importance
+importance.bootstrapGradientForest <- function(x,
+                                           type = c("Accuracy","Impurity","Weighted","Raw","Species")[3],
+                                           sort = TRUE) {
+
+    if (!inherits(x,"bootstrapGradientForest"))
+      stop(paste("'x' must be a bootstrapGradientForest object"))
+
+  return(importance_bootstrap_common(x, type, sort))
+}
+#
+#' Get variable importance from a combined bootstrapped Gradient Forest
+#'
+#' Finds the overall importance of each predictor by averaging
+#' the importance of each predictor from each bootstrap run.
+#' Predictors with more importance are better predictors of the
+#' response variables.
+#'
+#' returns a named vector of predictor importances, possibly sorted.
+#' @param x A combinedBootstrapGF object
+#' @param type What kind of importance to use. See importance.combinedGradientForest in the gradientForest package for more details.
+#' @param sort Should the predictors be sorted in order of importance?
+#' @export
+#' @importFrom extendedForest importance
+importance.combinedBootstrapGF <- function(x,
+                                           type = c("Weighted","Raw","Species")[1],
+                                           sort = TRUE) {
+
+    if (!inherits(x,"combinedBootstrapGF"))
+      stop(paste("'x' must be a combinedBootstrapGF object"))
+
+  return(importance_bootstrap_common(x, type, sort))
+}
+
+#' Internal function
+#'
+#' calculating importance for bootstrapGradientForest and
+#' combinedBootstrapGF has a lot of overlap.
+#'
+#' This function pulls together common operations.
+#' @importFrom extendedForest importance
+importance_bootstrap_common <- function(x,
+                                        type,
+                                        sort
+                                        ) {
+  preds <- pred_names(x)
+  ## Basic logic: Take average importance over all bootstrap samples
+  ## Deal with incomplete names
+  imp_list <- lapply(x$gf_list, function(gf, preds) {
+    imp <- importance(gf, type = type, sort = FALSE)
+    out <- imp[preds]
+    return(out)
+  }, preds = preds, type = type)
+
+  imp_combined <- colMeans(do.call(rbind, imp_list), na.rm=TRUE)
+  if (sort) {
+    out <- sort(imp_combined,decreasing=TRUE)
+  }else {
+    out <- imp_combined
+  }
+  return(out)
+
+}
