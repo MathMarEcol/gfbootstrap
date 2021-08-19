@@ -1058,12 +1058,15 @@ importance_bootstrap_common <- function(x,
   preds <- pred_names(x)
   ## Basic logic: Take average importance over all bootstrap samples
   ## Deal with incomplete names
-  imp_list <- lapply(x$gf_list, function(gf, preds) {
+  imp_list <- lapply(x$gf_list, function(gf, preds, type) {
     imp <- importance(gf, type = type, sort = FALSE)
     out <- imp[preds]
     return(out)
   }, preds = preds, type = type)
 
+  ## Assumes that GF assigns importance of 0 to predictors
+  ## that were supplied but not used, and an importance of NA
+  ## to predictors that were not supplied
   imp_combined <- colMeans(do.call(rbind, imp_list), na.rm=TRUE)
   if (sort) {
     out <- sort(imp_combined,decreasing=TRUE)
