@@ -230,7 +230,7 @@ gfbootstrap_dist <- function(
                 return(data.frame(xmin = NA, xmax = NA))
               },
               error = function(e){
-                if(grepl("Predictor [^:space:]* does not belong to", e$message)) {
+                if(grepl("Predictor [^[:space:]]* does not belong to", e$message)) {
                 message(paste0("Tree [", i,
                                "], had no occurences of predictor [", pred,
                                "]"))
