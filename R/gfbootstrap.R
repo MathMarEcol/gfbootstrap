@@ -916,7 +916,8 @@ bootstrap_predict_common <- function(object,
       } , missing_preds = missing_preds, gf_predictions))
 
     return(full_prediction)
-    }, newdata = newdata, pred_vars = pred_vars, extrap = extrap)
+	}, newdata = newdata, pred_vars = pred_vars, extrap = extrap,
+	future.packages = c("gradientForest"))
 
   newdata_long <- stats::reshape(
                            newdata,
