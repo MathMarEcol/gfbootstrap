@@ -291,7 +291,8 @@ gfbootstrap_dist <- function(
       } , missing_preds = missing_preds, gf_predictions))
 
     return(full_prediction)
-    }, newdata_df = newdata_df, pred_vars = pred_vars)
+	}, newdata_df = newdata_df, pred_vars = pred_vars,
+	future.packages = c("gradientForest"))
 
   ##generate pairs
   d_ij <- expand.grid(i = seq.int(K), j = seq.int(K))
