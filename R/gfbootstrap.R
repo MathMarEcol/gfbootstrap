@@ -932,7 +932,7 @@ bootstrap_predict_common <- function(object,
 
 		n_total <- sum(vapply(gf_predictions_list, nrow, integer(1)))
 
-		## Senitive to column names, must match gf_predictions_list
+		## Sensitive to column names, must match gf_predictions_list
 		gf_preds_stacked <- list(y = numeric(n_total),
 														 pred = character(n_total),
 														 x_row = integer(n_total),
