@@ -894,60 +894,68 @@ bootstrap_predict_common <- function(object,
     stop(paste("the following predictors are not in any of the bootstrapGradientForests:\n\t",badnames,sep=""))
   }
 
-  ## get all predictions
-  gf_predictions_list <- future.apply::future_lapply(object$gf_list, function(gf, newdata, pred_vars, extrap) {
-    if(class(gf)[1] == "combinedGradientForest"){
-      gf_preds <- names(gf$CU)
-    } else if(class(gf)[1] == "gradientForest"){
-      gf_preds <- as.character(unique(gf$res$var))
-    }
-    gf_predictions <-  predict(gf, newdata[ , gf_preds], extrap = extrap)
-    missing_preds <- setdiff(pred_vars, gf_preds)
-    full_prediction <- as.data.frame(lapply(pred_vars, function(pred, missing_preds, gf_predictions) {
-      if(pred %in% missing_preds) {
-        return(stats::setNames(list(rep(NA, length.out = nrow(gf_predictions))),
-                               nm = pred)
-               )
-      } else {
-        return(stats::setNames(list(gf_predictions[, pred]),
-                               nm = pred)
-               )
-       }
-      } , missing_preds = missing_preds, gf_predictions))
+      ## get all predictions
+      newdata_stacked <- stack(newdata)
 
-    return(full_prediction)
-	}, newdata = newdata, pred_vars = pred_vars, extrap = extrap,
-	future.packages = c("gradientForest"))
+		gf_predictions_list <- future.apply::future_lapply(
+							seq.int(length(object$gf_list)),
+							function(i, gf, newdata, newdata_stacked, pred_vars, extrap) {
+									if(class(gf[[i]])[1] == "combinedGradientForest"){
+											gf_preds <- names(gf[[i]]$CU)
+									} else if(class(gf[[i]])[1] == "gradientForest"){
+											gf_preds <- as.character(unique(gf[[i]]$res$var))
+									}
+									gf_predictions <-  predict(gf[[i]], newdata[ , gf_preds], extrap = extrap)
+									missing_preds <- setdiff(pred_vars, gf_preds)
+									full_prediction <- as.data.frame(lapply(pred_vars, function(pred, missing_preds, gf_predictions) {
+											if(pred %in% missing_preds) {
+													return(stats::setNames(list(rep(NA, length.out = nrow(gf_predictions))),
+																								 nm = pred)
+																 )
+											} else {
+													return(stats::setNames(list(gf_predictions[, pred]),
+																								 nm = pred)
+																 )
+											}
+									} , missing_preds = missing_preds, gf_predictions))
 
-  newdata_long <- stats::reshape(
-                           newdata,
-                           idvar = "x_row",
-                           varying = names(newdata),
-                           times = names(newdata),
-                           v.names = "x",
-                           direction = "long",
-                           timevar = "pred")
-  gf_predictions_long <- do.call("rbind",
-                                 future.apply::future_lapply(
-                                                 seq_along(gf_predictions_list),
-                                                 function(i, gf_predictions_list, object, newdata_long) {
-                                                   gf_pred <- gf_predictions_list[[i]]
-                                                   gf_pred <- gf_pred + object$offsets[rep(i, length.out = nrow(gf_pred)), ]
-                                                   gf_pred_long <- stats::reshape(
-                                                                         gf_pred,
-                                                                         idvar = "x_row",
-                                                                         varying = names(gf_pred),
-                                                                         times = names(gf_pred),
-                                                                         v.names = "y",
-                                                                         direction = "long",
-                                                                         timevar = "pred")
-                                                   gf_pred_full <- merge(gf_pred_long, newdata_long, by = c("pred", "x_row"))
-                                                   gf_pred_full <- data.frame(gf = i, gf_pred_full)
-                                                   return(gf_pred_full)
-                                                   }, gf_predictions_list = gf_predictions_list, object = object, newdata_long = newdata_long)
-                                 )
+									full_pred_stacked <- stack(full_prediction)
+									names(full_pred_stacked) <- c("y", "pred")
+									full_pred_stacked$pred <- as.character(full_pred_stacked$pred)
+									full_pred_stacked$x_row <- rep.int(seq.int(nrow(full_prediction)), ncol(full_prediction))
+									full_pred_stacked$gf <- rep.int(i, nrow(full_pred_stacked))
+									full_pred_stacked$x <- newdata_stacked$value
 
-  ##Now generate summary results
+									return(full_pred_stacked)
+							}, newdata = newdata, newdata_stacked = newdata_stacked, pred_vars = pred_vars, extrap = extrap, gf = object$gf_list,
+							future.packages = c("gradientForest"))
+
+		n_total <- sum(vapply(gf_predictions_list, nrow, integer(1)))
+
+		## Senitive to column names, must match gf_predictions_list
+		gf_preds_stacked <- list(y = numeric(n_total),
+														 pred = character(n_total),
+														 x_row = integer(n_total),
+														 gf = integer(n_total),
+														 x = numeric(n_total))
+		stack_colnames <- names(gf_preds_stacked)
+		tracemem(gf_preds_stacked)
+		for (i in seq.int(along.with=gf_predictions_list)) {
+				if (i == 1) {
+						start_row <- 1
+				} else {
+						start_row <- 1 + sum(vapply(gf_predictions_list[1:(i-1)], nrow, integer(1)))
+				}
+				end_row <- start_row - 1 + nrow(gf_predictions_list[[i]])
+
+				for(nm in stack_colnames) {
+						gf_preds_stacked[[nm]][start_row:end_row] <- gf_predictions_list[[i]][[nm]]
+				}
+		}
+		gf_predictions_long <- as.data.frame(gf_preds_stacked)
+
+
+		##Now generate summary results
   #out <- data.frame(type = NA, pred = NA, x_row = NA, x = NA, y = NA, gf_model = NA)[numeric(0), ]
   out <- list()
   all_opts <- c("mean", "variance", "points", "weight")
