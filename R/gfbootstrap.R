@@ -496,7 +496,12 @@ gg_bootstrapGF <- function(x,
 #'
 #' @param extrap passed on to predict.gradientForest
 #' possible valuse are NA, TRUE, FALSE, or a number in the range [0,1]
-
+#'
+#' @param avoid_copy if memory is an issue, set type = ("points") and
+#' `avoid_copy = TRUE`. The returned value will be a list,
+#' not a data.frame. The list can be converted to a data.table
+#' (NOT data.frame) with data.table::setDT, which will not create a copy.
+#'
 #' @param ... arguments passed to gradientForest::cumimp()
 #' TODO: This code is rather spaghetti, eg. activity 4 depends on 2 and 3,
 #' then activity 5 depends on 1 and 4
@@ -508,12 +513,14 @@ predict.bootstrapGradientForest <- function(object,
                                             newdata,
                                             type = c("mean"),
                                             extrap=TRUE,
+                                            avoid_copy = FALSE,
                                             ...){
 
   out <- gfbootstrap:::bootstrap_predict_common(object,
                                             newdata,
                                             type = type,
                                             extrap=extrap,
+                                            avoid_copy = avoid_copy,
                                             ...)
 
 
@@ -843,6 +850,11 @@ gg_combined_bootstrapGF <- function(x,
 #' @param extrap passed on to predict.gradientForest
 #' possible valuse are NA, TRUE, FALSE, or a number in the range [0,1]
 #'
+#' @param avoid_copy if memory is an issue, set type = ("points") and
+#' `avoid_copy = TRUE`. The returned value will be a list,
+#' not a data.frame. The list can be converted to a data.table
+#' (NOT data.frame) with data.table::setDT, which will not create a copy.
+#'
 #' @param ... arguments passed to gradientForest::cumimp()
 #'
 #' @return A long form data.frame, with $type giving the prediction type.
@@ -853,12 +865,14 @@ predict.combinedBootstrapGF <- function(object,
                                             newdata,
                                             type = c("mean"),
                                             extrap=TRUE,
+                                            avoid_copy = FALSE,
                                             ...){
 
   out <- gfbootstrap:::bootstrap_predict_common(object,
                                             newdata,
                                             type = type,
                                             extrap=extrap,
+                                            avoid_copy = avoid_copy,
                                             ...)
 
 
@@ -878,6 +892,7 @@ bootstrap_predict_common <- function(object,
                                             newdata,
                                             type = c("mean"),
                                             extrap=TRUE,
+                                            avoid_copy = FALSE,
                                             ...) {
 
   assertthat::assert_that(length(extrap) == 1)
@@ -951,8 +966,14 @@ bootstrap_predict_common <- function(object,
 						gf_preds_stacked[[nm]][start_row:end_row] <- gf_predictions_list[[i]][[nm]]
 				}
 		}
-		gf_predictions_long <- as.data.frame(gf_preds_stacked)
 
+    ## Return early and avoid making copy
+    ## if user has set appropriate options
+    if (all(type == "points") && avoid_copy) {
+        return(gf_preds_stacked)
+    }
+
+    gf_predictions_long <- as.data.frame(gf_preds_stacked)
 
 		##Now generate summary results
   #out <- data.frame(type = NA, pred = NA, x_row = NA, x = NA, y = NA, gf_model = NA)[numeric(0), ]
