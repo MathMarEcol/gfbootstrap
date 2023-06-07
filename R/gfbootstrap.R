@@ -939,7 +939,6 @@ bootstrap_predict_common <- function(object,
 														 gf = integer(n_total),
 														 x = numeric(n_total))
 		stack_colnames <- names(gf_preds_stacked)
-		tracemem(gf_preds_stacked)
 		for (i in seq.int(along.with=gf_predictions_list)) {
 				if (i == 1) {
 						start_row <- 1
