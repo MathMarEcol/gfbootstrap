@@ -566,7 +566,7 @@ pred_names <- function(obj) {
 #'
 #' @export
 pred_names.bootstrapGradientForest <- function(obj) {
-unique(do.call("c", future.apply::future_lapply(obj$gf_list,
+unique(do.call("c", lapply(obj$gf_list,
                                                             function(x){
                                                               levels(x$res$var)
                                                             })
@@ -719,7 +719,7 @@ combinedBootstrapGF <- function(...,
 #'
 #' @export
 pred_names.combinedBootstrapGF <- function(obj) {
-  unique(do.call("c", future.apply::future_lapply(obj$gf_list,
+  unique(do.call("c", lapply(obj$gf_list,
                                                   function(x){
                                                     ##now each is a combined GF
                                                     names(x$CU)
