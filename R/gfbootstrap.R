@@ -605,6 +605,10 @@ unique(do.call("c", lapply(obj$gf_list,
 #' @param method see gradientForest::combinedGradientForest
 #' @param standardize see gradientForest::combinedGradientForest
 #' @param weight see gradientForest::combinedGradientForest
+#' @param combin Advanced use only, provide a precomputed
+#'  set of bootstrap combinations. Should be a data.frame or matrix with
+#' n_samp rows and one col for each gf object being combined. Each element
+#' is the bootstrap sample index from the gf object.
 #'
 #' @return combinedBootstrapGF object
 #'
@@ -643,7 +647,8 @@ combinedBootstrapGF <- function(...,
                                 nbin = 101,
                                 method = 2,
                                 standardize = c("before", "after")[1],
-                                weight=c("uniform","species","rsq.total","rsq.mean","site","site.species","site.rsq.total","site.rsq.mean")[3]
+                                weight=c("uniform","species","rsq.total","rsq.mean","site","site.species","site.rsq.total","site.rsq.mean")[3],
+                                combin = NULL
                                 ) {
   ##... are all the GF objects
 
@@ -674,20 +679,34 @@ combinedBootstrapGF <- function(...,
   ## randomly select a gf model from each gfbootstrap
   ## and create a combinedGradientForest
   ## from the selected gf models
-  combin <- data.frame(lapply(n_gf_boot, function(n, n_samp){
-    sample.int(n, n_samp, replace = TRUE)
-  }, n_samp = n_samp) )
+  if (is.null(combin)) {
+    combin <- data.frame(lapply(n_gf_boot, function(n, n_samp) {
+      sample.int(n, n_samp, replace = TRUE)
+    }, n_samp = n_samp))
+  } else {
+    ## User has supplied `combin`. Verify.
+    if (!all(dim(combin)) == c(n_samp, n_gf)) {
+      stop("`combin` supplied to combinebootstrapGF did not have the correct dimension")
+    }
+  }
 
-  gf_combine <- future.apply::future_apply(combin, 1, function(samp, gf_list, nbin, method, standardize){
-    gf_samp <- lapply(names(gf_list), function(gf, gf_list, samp){
+  ## Only pass the relevant GF objects to each parallel worker
+
+  combin_list <- apply(combin, 1, function(samp, gf_list) {
+    lapply(names(gf_list), function(gf, gf_list, samp) {
       gf_list[[gf]]$gf_list[[samp[gf]]]
     }, gf_list = gf_list, samp = samp)
-    gf_samp$nbin <- nbin
-    gf_samp$method <- method
-    gf_samp$standardize <- standardize
-    gf_combined <- do.call(gradientForest::combinedGradientForest, gf_samp)
+  }, gf_list = gf_list)
+
+  gf_combine <- lapply(combin_list, function(gf_set, nbin, method, standardize) {
+    gf_set$nbin <- nbin
+    gf_set$method <- method
+    gf_set$standardize <- standardize
+    gf_combined <- do.call(gradientForest::combinedGradientForest,
+                                      args = gf_set
+                                      )
     return(gf_combined)
-  }, gf_list = gf_list, nbin = nbin, method = method, standardize = standardize)
+  }, nbin = nbin, method = method, standardize = standardize)
 
   ##calculate the new offsets
   gf_combine <- list(gf_list = gf_combine)
@@ -756,7 +775,7 @@ gg_combined_bootstrapGF <- function(x,
   ##get curves from a subset of the gf objects
   ##put into a table and plot
   curve_groups <- expand.grid(vars, gf_ind)
-  curve_all <- do.call("rbind", future.apply::future_apply(curve_groups, 1, function(cg, x){
+  curve_all <- do.call("rbind", apply(curve_groups, 1, function(cg, x){
     pred <- as.character(cg[1])
     gf <- as.integer(cg[2])
     
@@ -774,7 +793,7 @@ gg_combined_bootstrapGF <- function(x,
   }, x = x)
   )
   if(debug){
-    curve_no_offset <- do.call("rbind", future.apply::future_apply(curve_groups, 1, function(cg, x){
+    curve_no_offset <- do.call("rbind", apply(curve_groups, 1, function(cg, x){
       pred <- as.character(cg[1])
       gf <- as.integer(cg[2])
       
