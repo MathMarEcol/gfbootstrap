@@ -303,24 +303,27 @@ gfbootstrap_dist <- function(
 
     ## For each predictor, generate a distance long-form distance matrix between gf objects
   offsets_m <- as.matrix(offsets)
-  d_ij_pred <- future.apply::future_lapply(seq_along(pred_vars), function(pred, gf_predictions_list, d_ij_diag, offsets_m, x_samples) {
-    dist_est <- apply(d_ij_diag, 1,  function(ind, pred, gf_predictions_list, offsets_m, x_samples) {
-      i <- ind[1]
-      j <- ind[2]
-      gf_i <- gf_predictions_list[[i]][ , pred]
-      gf_j <- gf_predictions_list[[j]][ , pred]
-      d_vec <- (gf_i + rep(offsets_m[i, pred], x_samples)) -
-        (gf_j + rep(offsets_m[j, pred], x_samples))
-      d <-  mean(d_vec, na.rm = TRUE)
-    }, pred = pred, gf_predictions_list = gf_predictions_list, offsets = offsets_m, x_samples = x_samples)
+  d_ij_pred <- lapply(seq_along(pred_vars), function(pred, gf_predictions_list, d_ij_diag, offsets_m, x_samples) {
+    future::future({
+      dist_est <- apply(d_ij_diag, 1,  function(ind, pred, gf_predictions_list, offsets_m, x_samples) {
+        i <- ind[1]
+        j <- ind[2]
+        gf_i <- gf_predictions_list[[i]][ , pred]
+        gf_j <- gf_predictions_list[[j]][ , pred]
+        d_vec <- (gf_i + rep(offsets_m[i, pred], x_samples)) -
+          (gf_j + rep(offsets_m[j, pred], x_samples))
+        d <-  mean(d_vec, na.rm = TRUE)
+      }, pred = pred, gf_predictions_list = gf_predictions_list, offsets = offsets_m, x_samples = x_samples)
 
-    d_ij_dist <- cbind(d_ij_diag, dist_est)
-    d_ji <- d_ij_dist[, c(2, 1, 3)]
+      d_ij_dist <- cbind(d_ij_diag, dist_est)
+      d_ji <- d_ij_dist[, c(2, 1, 3)]
 
-    d_ij_full <- rbind(d_ij_dist, d_ji)
-    rownames(d_ij_full) <- NULL
-    return(d_ij_full)
-  }, gf_predictions_list = gf_predictions_list, d_ij_diag = d_ij_diag, offsets_m = offsets_m, x_samples = x_samples, future.globals=FALSE)
+      d_ij_full <- rbind(d_ij_dist, d_ji)
+      rownames(d_ij_full) <- NULL
+      return(d_ij_full)
+      }, globals = c("d_ij_diag", "pred", "gf_predictions_list", "offsets_m", "x_samples"))
+  }, gf_predictions_list = gf_predictions_list, d_ij_diag = d_ij_diag, offsets_m = offsets_m, x_samples = x_samples)
+  d_ij_pred <- lapply(d_ij_pred, future::value)
   names(d_ij_pred) <- pred_vars
 
   return(d_ij_pred)
