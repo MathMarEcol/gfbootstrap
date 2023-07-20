@@ -320,7 +320,11 @@ gfbootstrap_dist <- function(
 
       d_ij_full <- rbind(d_ij_dist, d_ji)
       rownames(d_ij_full) <- NULL
-      return(d_ij_full)
+
+      vec_b <- aggregate(d_ij_full[,3], by = list(alpha_i = d_ij_full[,1]), function(x){sum(x, na.rm = TRUE)})
+
+
+      return(vec_b)
       }, globals = c("d_ij_diag", "pred", "gf_predictions_list", "offsets_m", "x_samples"))
   }, gf_predictions_list = gf_predictions_list, d_ij_diag = d_ij_diag, offsets_m = offsets_m, x_samples = x_samples)
   d_ij_pred <- lapply(d_ij_pred, future::value)
@@ -362,8 +366,7 @@ gfbootstrap_offsets <- function(x){
   ##eg. distances do not change if ALL curves are shifted by +10
   mat_A[1, ] <- 0
   mat_A[1,1] <- 1
-  offsets_by <- lapply(x, function(d_pred, mat_A){
-                            vec_b <- aggregate(d_pred[,3], by = list(alpha_i = d_pred[,1]), function(x){sum(x, na.rm = TRUE)})
+  offsets_by <- lapply(x, function(vec_b, mat_A){
                             vec_b$x[1] <- 0
                             vec_b <- - vec_b
                             solve(mat_A, vec_b$x)
@@ -701,6 +704,8 @@ combinedBootstrapGF <- function(...,
     }, gf_list = gf_list, samp = samp)
   }, gf_list = gf_list)
 
+  rm(gf_list)
+
   gf_combine <- lapply(combin_list, function(gf_set, nbin, method, standardize) {
     gf_set$nbin <- nbin
     gf_set$method <- method
@@ -711,6 +716,7 @@ combinedBootstrapGF <- function(...,
     return(gf_combined)
   }, nbin = nbin, method = method, standardize = standardize)
 
+  rm(combin_list)
   ##calculate the new offsets
   gf_combine <- list(gf_list = gf_combine)
   gf_combine$weight <- weight
