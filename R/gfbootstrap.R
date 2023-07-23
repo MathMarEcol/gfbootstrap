@@ -324,19 +324,14 @@ gfbootstrap_dist <- function(
         gf_j <- gf_predictions_list[[j]][ , pred]
         d_vec <- (gf_i + rep(offsets_m[i, pred], x_samples)) -
           (gf_j + rep(offsets_m[j, pred], x_samples))
-        d <-  mean(d_vec, na.rm = TRUE)
+        return(mean(d_vec, na.rm = TRUE))
       }, pred = pred, gf_predictions_list = gf_predictions_list, offsets = offsets_m, x_samples = x_samples)
 
       d_ij_dist <- cbind(d_ij_diag, dist_est)
-      d_ji <- d_ij_dist[, c(2, 1, 3)]
 
-      d_ij_full <- rbind(d_ij_dist, d_ji)
-      rownames(d_ij_full) <- NULL
+      rownames(d_ij_dist) <- NULL
 
-      vec_b <- aggregate(d_ij_full[,3], by = list(alpha_i = d_ij_full[,1]), function(x){sum(x, na.rm = TRUE)})
-
-
-      return(vec_b)
+      return(d_ij_dist)
       }, globals = c("d_ij_diag", "pred", "gf_predictions_list", "offsets_m", "x_samples"))
   }, gf_predictions_list = gf_predictions_list, d_ij_diag = d_ij_diag, offsets_m = offsets_m, x_samples = x_samples)
   d_ij_pred <- lapply(d_ij_pred, future::value)
@@ -368,24 +363,32 @@ gfbootstrap_offsets <- function(x){
   ## that minimizes mean squared error between
   ## curves.
   K <- max(x[[1]][,2])
-  ##find optimal offsets for each predictor
-  mat_A <- K*diag(K) - matrix(1, nrow = K, ncol = K)
+  offsets_list <- lapply(x, function(d_ij, K){
 
-  ##Set the offset of the first curve to be 0,
-  ##so all offsets are relative to the first curve.
-  ##This is neccessary to create a unique solution
-  ##because the system has an infinite number of solutions
-  ##eg. distances do not change if ALL curves are shifted by +10
-  mat_A[1, ] <- 0
-  mat_A[1,1] <- 1
-  offsets_by <- lapply(x, function(vec_b, mat_A){
-                            vec_b$x[1] <- 0
-                            vec_b <- - vec_b
-                            solve(mat_A, vec_b$x)
-                          },
-                          mat_A = mat_A
-                    )
-  offsets_new <- as.data.frame(lapply(offsets_by, as.vector))
+    ## Set up system of coupled linear simulaneous equations
+    mat_A <- matrix(0, (K^2 - K + 1), K)
+    vec_b <- numeric(K^2 - K + 1)
+
+    mat_A[nrow(mat_A), ] <- 1
+    vec_b[nrow(mat_A)] <- 0
+    for (r in seq.int(nrow(d_ij))) {
+
+      ## Forward equation, i = k, j = l, d_kl
+      mat_A[2*r-1, d_ij[r, 1]] <- 1
+      mat_A[2*r-1, d_ij[r, 2]] <- -1
+      vec_b[2*r-1] <- d_ij[r, 3]
+
+      ## Reverse equation, i = l, j = k, d_lk = -d_kl
+      mat_A[2*r, d_ij[r, 1]] <- -1
+      mat_A[2*r, d_ij[r, 2]] <- 1
+      vec_b[2*r] <- -d_ij[r, 3]
+    }
+
+    solve(mat_A, vec_b)
+  },
+  K = K
+  )
+  offsets_new <- as.data.frame(lapply(offsets_list, as.vector))
   return(offsets_new)
 }
 
