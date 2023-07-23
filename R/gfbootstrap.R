@@ -105,6 +105,7 @@ bootstrapGradientForest <- function(
                                                 trace=trace
                                                 )
         res$X <- NULL
+        return(res)
       }, error = function(e){
         message(paste0("GF model failed to fit, restarting: ", conditionMessage(e)))
         return(NULL)
