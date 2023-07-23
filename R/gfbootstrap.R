@@ -172,7 +172,7 @@ bootstrapGradientForest <- function(
     ##
   df_dist <- gfbootstrap:::gfbootstrap_dist(out,
                               x_samples = 100)
-  out$offsets <- gfbootstrap:::gfbootstrap_offsets(df_dist)
+  out$offsets <- df_dist# gfbootstrap:::gfbootstrap_offsets(df_dist)
 
   return(out)
 }
@@ -315,6 +315,10 @@ gfbootstrap_dist <- function(
 
   d_ij_diag <- as.matrix(d_ij[d_ij$i < d_ij$j, ])
 
+    ## Simple align to first curve.
+    d_ij_diag <- as.matrix(d_ij[d_ij$i == 1, ])
+
+
     ## For each predictor, generate a distance long-form distance matrix between gf objects
   offsets_m <- as.matrix(offsets)
   d_ij_pred <- lapply(seq_along(pred_vars), function(pred, gf_predictions_list, d_ij_diag, offsets_m, x_samples) {
@@ -337,7 +341,12 @@ gfbootstrap_dist <- function(
       }, globals = c("d_ij_diag", "pred", "gf_predictions_list", "offsets_m", "x_samples"))
   }, gf_predictions_list = gf_predictions_list, d_ij_diag = d_ij_diag, offsets_m = offsets_m, x_samples = x_samples)
   d_ij_pred <- lapply(d_ij_pred, future::value)
-  names(d_ij_pred) <- pred_vars
+    names(d_ij_pred) <- pred_vars
+
+    ## Simple align to first curve
+    d_ij_pred <- as.data.frame(lapply(d_ij_pred, function(pr) {
+      as.vector(pr[, 3])
+    }))
 
   return(d_ij_pred)
 
@@ -373,7 +382,7 @@ gfbootstrap_offsets <- function(x){
 
     mat_A[nrow(mat_A), ] <- 1
     vec_b[nrow(mat_A)] <- 0
-    for (r in seq.int(nrow(d_ij))) {
+    for (r in seq.int(3)){ #seq.int(nrow(d_ij))) {
 
       ## Forward equation, i = k, j = l, d_kl
       mat_A[2*r-1, d_ij[r, 1]] <- 1
@@ -762,7 +771,7 @@ combinedBootstrapGF <- function(...,
 
   gf_combine_dist <- gfbootstrap::gfbootstrap_dist(gf_combine, x_samples = x_samples)
 
-  gf_combine$offsets <- gfbootstrap::gfbootstrap_offsets(gf_combine_dist)
+  gf_combine$offsets <- gf_combine_dist#gfbootstrap::gfbootstrap_offsets(gf_combine_dist)
 
   return(gf_combine)
 }
