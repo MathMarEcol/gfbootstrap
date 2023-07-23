@@ -715,13 +715,13 @@ combinedBootstrapGF <- function(...,
   ## randomly select a gf model from each gfbootstrap
   ## and create a combinedGradientForest
   ## from the selected gf models
-  if (is.null(combin)) {
+  if (all(is.null(combin))) {
     combin <- data.frame(lapply(n_gf_boot, function(n, n_samp) {
       sample.int(n, n_samp, replace = TRUE)
     }, n_samp = n_samp))
   } else {
     ## User has supplied `combin`. Verify.
-    if (!all(dim(combin)) == c(n_samp, n_gf)) {
+    if (!all(dim(combin) == c(n_samp, n_gf))) {
       stop("`combin` supplied to combinebootstrapGF did not have the correct dimension")
     }
   }
