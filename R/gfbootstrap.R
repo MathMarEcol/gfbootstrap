@@ -1045,8 +1045,8 @@ bootstrap_predict_common <- function(object,
   #out <- data.frame(type = NA, pred = NA, x_row = NA, x = NA, y = NA, gf_model = NA)[numeric(0), ]
   out <- list()
   all_opts <- c("mean", "variance", "points", "weight")
-  if ("mean" %in% type){
-    out$mean <- do.call("rbind", future.apply::future_by(gf_predictions_long,
+    if ("mean" %in% type){
+        out$mean <- do.call("rbind", by(gf_predictions_long,
                             list(pred = gf_predictions_long$pred,
                                  x_row = gf_predictions_long$x_row),
                             function(x) {
@@ -1055,10 +1055,9 @@ bootstrap_predict_common <- function(object,
                             }
 
                             ))
-
   }
   if ("diagonal" %in% type){
-    out$diagonal <- do.call("rbind", future.apply::future_by(gf_predictions_long,
+    out$diagonal <- do.call("rbind", by(gf_predictions_long,
                             list(pred = gf_predictions_long$pred,
                                  x_row = gf_predictions_long$x_row),
                             function(x) {
@@ -1069,7 +1068,7 @@ bootstrap_predict_common <- function(object,
 
   }
   if ("variance" %in% type){
-    out$variance <- future.apply::future_by(gf_predictions_long,
+    out$variance <- by(gf_predictions_long,
                             list(x_row = gf_predictions_long$x_row),
                             function(x, pred_vars) {
 
