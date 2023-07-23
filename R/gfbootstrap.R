@@ -285,8 +285,9 @@ gfbootstrap_dist <- function(
   newdata_df <- as.data.frame(newdata_df)
 
   ## Generate predictions
-  gf_predictions_list <- lapply(gf_list, function(gf, newdata_df, pred_vars) {
-    ##
+  gf_predictions_list <- lapply(gf_list, function(gf, newdata_df, pred_vars, gf_dens) {
+    gf$dens <- gf_dens
+
     if(class(gf)[1] == "combinedGradientForest"){
       gf_preds <- names(gf$CU)
     } else if(class(gf)[1] == "gradientForest"){
@@ -307,7 +308,7 @@ gfbootstrap_dist <- function(
       } , missing_preds = missing_preds, gf_predictions))
 
     return(full_prediction)
-	}, newdata_df = newdata_df, pred_vars = pred_vars)
+	}, newdata_df = newdata_df, pred_vars = pred_vars, gf_dens = gf_dens)
 
   ##generate pairs
   d_ij <- expand.grid(i = seq.int(K), j = seq.int(K))
