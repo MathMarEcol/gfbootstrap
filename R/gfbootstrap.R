@@ -210,7 +210,7 @@ gfbootstrap_dist <- function(
   P <- length(pred_vars)
   K <- length(gf_list)
 
-  if(hasName(gf_boot, "offsets") & !is.null(gf_boot$offsets)){
+  if(hasName(gf_boot, "offsets") && !is.null(gf_boot$offsets)){
     offsets <- gf_boot$offsets
     assertthat::assert_that(nrow(offsets) == K)
     assertthat::assert_that(ncol(offsets) == P)
