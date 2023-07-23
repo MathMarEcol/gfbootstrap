@@ -735,14 +735,13 @@ combinedBootstrapGF <- function(...,
   }, gf_list = gf_list)
 
     gf_X <- lapply(gf_list, \(gf){gf$X})
-    names(X) <- gf_names
+    names(gf_X) <- gf_names
 
     dens <- lapply(gf_list, \(gf){gf$dens})
     names(dens) <- gf_names
 
   rm(gf_list)
     gf_combine <- future.apply::future_lapply(combin_list, function(gf_set, gf_X, dens, nbin, method, standardize) {
-        print("I")
         for (gf in seq_along(gf_set)) {
 
         gf_set[[gf]]$dens <- dens[[gf]]
