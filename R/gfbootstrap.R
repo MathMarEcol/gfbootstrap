@@ -92,7 +92,7 @@ bootstrapGradientForest <- function(
     while(!valid_model & tries < max_retries){
       if(tries > 1) message(paste0("GF model failed to fit. Restarting. i: [", i, "], try: ", tries))
       gf_list <-  tryCatch({
-        gradientForest::gradientForest(data = x,
+        res <- gradientForest::gradientForest(data = x,
                                                 predictor.vars=predictor.vars,
                                                 response.vars=response.vars,
                                                 ntree = 1,
@@ -104,6 +104,7 @@ bootstrapGradientForest <- function(
                                                 nbin=nbin,
                                                 trace=trace
                                                 )
+        res$X <- NULL
       }, error = function(e){
         message(paste0("GF model failed to fit, restarting: ", conditionMessage(e)))
         return(NULL)
@@ -145,7 +146,12 @@ bootstrapGradientForest <- function(
     stop(paste0("[", sum(vapply(gf_bootstrap, is.null, logical(1))),
                 "] GradientForest objects failed to fit even after [", max_retries, "] tries"))
   }
-
+  dens <- gf_bootstrap[[1]]$dens
+  rcall <-gf_bootstrap[[1]]$call
+  for (i in seq_along(gf_bootstrap)) {
+    gf_bootstrap[[i]]$dens <- NULL
+    gf_bootstrap[[i]]$call <- NULL
+  }
   ##The offsets are applied to the cumimp curves,
   ##but the cumimp curves are calculated
   ##on demand by gradientForest.
@@ -153,8 +159,12 @@ bootstrapGradientForest <- function(
   ## and apply the offsets on demand.
   out <- list(
     gf_list = gf_bootstrap,
-    offsets = NULL
+    offsets = NULL,
+    dens = dens,
+    call = rcall,
+    X = x
   )
+
   class(out) <- "bootstrapGradientForest"
   ##Calculate offsets
     ##the optimal offset requires knowing the distance between curves for every tree in gfbootstrap
@@ -191,7 +201,8 @@ gfbootstrap_dist <- function(
   if(!require(gradientForest)){
     stop("gfbootstrap_dist requires the gradientForest package. Please install it from https://r-forge.r-project.org/R/?group_id=973")
   }
-  gf_list <- gf_boot$gf_list
+    gf_list <- gf_boot$gf_list
+    gf_dens <- gf_boot$dens
 
   assertthat::assert_that(any("gradientForest" %in% class(gf_list[[1]]),
                               "combinedGradientForest" %in% class(gf_list[[1]])))
@@ -221,11 +232,12 @@ gfbootstrap_dist <- function(
   ##precalculate scores
   ## need the min and max ci for each predictor
   ## using min and max, predict for all gf, using extrap = NA and the same x_samples points
-  pred_ci_range <- lapply(pred_vars, function(pred, gf_list){
-    gf_ci_range <- do.call("rbind", lapply(seq_along(gf_list), function(i, pred) {
-      gf <- gf_list[[i]]
+  pred_ci_range <- lapply(pred_vars, function(pred, gf_list, gf_dens){
+    gf_ci_range <- do.call("rbind", lapply(seq_along(gf_list), function(i, pred, gf_list, gf_dens) {
+        gf <- gf_list[[i]]
+        gf$dens <- gf_dens
               ##calculate overlap
-              tryCatch({
+      tryCatch({
                  ret <-gradientForest::cumimp(gf, pred)$x
                 if(length(ret) >= 2){
                   return(data.frame(xmin = min(ret), xmax = max(ret)))
@@ -242,10 +254,10 @@ gfbootstrap_dist <- function(
                   stop(e)
                 }
               })
-    }, pred = pred)
+    }, pred = pred, gf_list = gf_list, gf_dens = gf_dens)
     )
     return(list(xmin = min(gf_ci_range$xmin, na.rm = TRUE), xmax = max(gf_ci_range$xmax, na.rm = TRUE)))
-    }, gf_list = gf_list)
+    }, gf_list = gf_list, gf_dens = gf_dens)
   names(pred_ci_range) <- pred_vars
 
   empty_preds <- vapply(pred_ci_range, function(x){!is.finite(x$xmin)},
@@ -415,7 +427,9 @@ gg_bootstrapGF <- function(x,
     gf <- as.integer(cg[2])
     
     if (is.element(pred, levels(x$gf_list[[gf]]$res$var)) ){
-      curve_data <- gradientForest::cumimp(x$gf_list[[gf]], pred)
+      tmp_gf <- x$gf_list[[gf]]
+      tmp_gf$dens <- x$dens
+      curve_data <- gradientForest::cumimp(tmp_gf, pred)
     } else {
       message(paste0("gg_bootstrapgf: Tree [", gf,
                      "], had no occurences of predictor [", pred,
@@ -433,7 +447,9 @@ gg_bootstrapGF <- function(x,
       gf <- as.integer(cg[2])
       
       if (is.element(pred, levels(x$gf_list[[gf]]$res$var)) ){
-        curve_data <- gradientForest::cumimp(x$gf_list[[gf]], pred)
+        tmp_gf <- x$gf_list[[gf]]
+        tmp_gf$dens <- x$dens
+        curve_data <- gradientForest::cumimp(tmp_gf, pred)
       } else {
         message(paste0("gg_bootstrapgf: Tree [", gf,
                        "], had no occurences of predictor [", pred,
@@ -700,26 +716,43 @@ combinedBootstrapGF <- function(...,
 
   combin_list <- apply(combin, 1, function(samp, gf_list) {
     lapply(names(gf_list), function(gf, gf_list, samp) {
-      gf_list[[gf]]$gf_list[[samp[gf]]]
+        return(gf_list[[gf]]$gf_list[[samp[gf]]])
     }, gf_list = gf_list, samp = samp)
   }, gf_list = gf_list)
 
+    X <- lapply(gf_list, \(gf){gf$X})
+    names(X) <- gf_names
+
+    dens <- lapply(gf_list, \(gf){gf$dens})
+    names(dens) <- gf_names
+
   rm(gf_list)
 
-  gf_combine <- lapply(combin_list, function(gf_set, nbin, method, standardize) {
-    gf_set$nbin <- nbin
-    gf_set$method <- method
-    gf_set$standardize <- standardize
-    gf_combined <- do.call(gradientForest::combinedGradientForest,
-                                      args = gf_set
-                                      )
+    gf_combine <- lapply(combin_list, function(gf_set, X, dens, nbin, method, standardize) {
+      for (gf in gf_set) {
+        gf_set[[gf]]$dens <- dens[[gf]]
+        gf_set[[gf]]$X <- X[[gf]]
+      }
+
+      gf_set$nbin <- nbin
+      gf_set$method <- method
+      gf_set$standardize <- standardize
+      gf_combined <- do.call(gradientForest::combinedGradientForest,
+                             args = gf_set
+                             )
+      gf_combined$X <- NULL
+      dens_c <- gf_combined$dens$Combined
+      gf_combined$dens <- list(Combined = dens_c)
+
     return(gf_combined)
-  }, nbin = nbin, method = method, standardize = standardize)
+  }, nbin = nbin, method = method, standardize = standardize, X = X, dens = dens)
 
   rm(combin_list)
   ##calculate the new offsets
   gf_combine <- list(gf_list = gf_combine)
-  gf_combine$weight <- weight
+    gf_combine$weight <- weight
+    gf_combine$X <- X
+    gf_combine$dens_inputs <- dens
   class(gf_combine) <- c("combinedBootstrapGF", "list")
 
   gf_combine_dist <- gfbootstrap::gfbootstrap_dist(gf_combine, x_samples = x_samples)
@@ -789,7 +822,9 @@ gg_combined_bootstrapGF <- function(x,
     gf <- as.integer(cg[2])
     
     if (is.element(pred, names(x$gf_list[[gf]]$CU)) ){
-      curve_data <- gradientForest::cumimp(x$gf_list[[gf]], pred, weight = x$weight)
+      tmp_gf <- x$gf_list[[gf]]
+      tmp_gf$dens <- x$dens
+      curve_data <- gradientForest::cumimp(tmp_gf, pred, weight = x$weight)
     } else {
       message(paste0("gg_combined_bootstrapgf: Tree [", gf,
                      "], had no occurences of predictor [", pred,
@@ -807,7 +842,9 @@ gg_combined_bootstrapGF <- function(x,
       gf <- as.integer(cg[2])
       
       if (is.element(pred, names(x$gf_list[[gf]]$CU)) ){
-        curve_data <- gradientForest::cumimp(x$gf_list[[gf]], pred, weight = x$weight)
+      tmp_gf <- x$gf_list[[gf]]
+      tmp_gf$dens <- x$dens
+      curve_data <- gradientForest::cumimp(tmp_gf, pred, weight = x$weight)
       } else {
         message(paste0("gg_combined_bootstrapgf: Tree [", gf,
                        "], had no occurences of predictor [", pred,
@@ -927,7 +964,7 @@ bootstrap_predict_common <- function(object,
   assertthat::assert_that(length(extrap) == 1)
 
   if (missing(newdata)){
-    newdata <- object$gf_list[[1]]$X[,gfbootstrap::pred_names(object)]
+      newdata <- object$X[[1]][,gfbootstrap::pred_names(object)]
   }
   assertthat::assert_that(inherits(newdata,"data.frame"))
 
