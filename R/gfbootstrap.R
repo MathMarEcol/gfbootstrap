@@ -977,10 +977,9 @@ bootstrap_predict_common <- function(object,
 
       ## get all predictions
       newdata_stacked <- stack(newdata)
-
-		gf_predictions_list <- future.apply::future_lapply(
+		gf_predictions_list <- lapply(
 							seq.int(length(object$gf_list)),
-							function(i, gf, newdata, newdata_stacked, pred_vars, extrap) {
+							function(i, gf, newdata, newdata_stacked, pred_vars, extrap, offsets) {
 									if(class(gf[[i]])[1] == "combinedGradientForest"){
 											gf_preds <- names(gf[[i]]$CU)
 									} else if(class(gf[[i]])[1] == "gradientForest"){
@@ -988,17 +987,19 @@ bootstrap_predict_common <- function(object,
 									}
 									gf_predictions <-  predict(gf[[i]], newdata[ , gf_preds], extrap = extrap)
 									missing_preds <- setdiff(pred_vars, gf_preds)
-									full_prediction <- as.data.frame(lapply(pred_vars, function(pred, missing_preds, gf_predictions) {
+									full_prediction <- as.data.frame(lapply(pred_vars, function(pred, missing_preds, gf_predictions, offsets) {
 											if(pred %in% missing_preds) {
 													return(stats::setNames(list(rep(NA, length.out = nrow(gf_predictions))),
 																								 nm = pred)
 																 )
 											} else {
-													return(stats::setNames(list(gf_predictions[, pred]),
+													return(stats::setNames(list(gf_predictions[, pred] +
+                                                      rep(offsets[i,pred],
+                                                          nrow(gf_predictions))),
 																								 nm = pred)
 																 )
 											}
-									} , missing_preds = missing_preds, gf_predictions))
+									} , missing_preds = missing_preds, gf_predictions, offsets))
 
 									full_pred_stacked <- stack(full_prediction)
 									names(full_pred_stacked) <- c("y", "pred")
@@ -1008,8 +1009,7 @@ bootstrap_predict_common <- function(object,
 									full_pred_stacked$x <- newdata_stacked$value
 
 									return(full_pred_stacked)
-							}, newdata = newdata, newdata_stacked = newdata_stacked, pred_vars = pred_vars, extrap = extrap, gf = object$gf_list,
-							future.packages = c("gradientForest"))
+							}, newdata = newdata, newdata_stacked = newdata_stacked, pred_vars = pred_vars, extrap = extrap, gf = object$gf_list, offsets = object$offsets)
 
 		n_total <- sum(vapply(gf_predictions_list, nrow, integer(1)))
 
