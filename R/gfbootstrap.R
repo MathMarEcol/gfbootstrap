@@ -734,18 +734,19 @@ combinedBootstrapGF <- function(...,
     }, gf_list = gf_list, samp = samp)
   }, gf_list = gf_list)
 
-    X <- lapply(gf_list, \(gf){gf$X})
+    gf_X <- lapply(gf_list, \(gf){gf$X})
     names(X) <- gf_names
 
     dens <- lapply(gf_list, \(gf){gf$dens})
     names(dens) <- gf_names
 
   rm(gf_list)
+    gf_combine <- future.apply::future_lapply(combin_list, function(gf_set, gf_X, dens, nbin, method, standardize) {
+        print("I")
+        for (gf in seq_along(gf_set)) {
 
-    gf_combine <- lapply(combin_list, function(gf_set, X, dens, nbin, method, standardize) {
-      for (gf in gf_set) {
         gf_set[[gf]]$dens <- dens[[gf]]
-        gf_set[[gf]]$X <- X[[gf]]
+        gf_set[[gf]]$X <- gf_X[[gf]]
       }
 
       gf_set$nbin <- nbin
@@ -759,13 +760,13 @@ combinedBootstrapGF <- function(...,
       gf_combined$dens <- list(Combined = dens_c)
 
     return(gf_combined)
-  }, nbin = nbin, method = method, standardize = standardize, X = X, dens = dens)
+    }, nbin = nbin, method = method, standardize = standardize, gf_X = gf_X, dens = dens, future.globals = FALSE, future.seed = TRUE)
 
   rm(combin_list)
   ##calculate the new offsets
   gf_combine <- list(gf_list = gf_combine)
     gf_combine$weight <- weight
-    gf_combine$X <- X
+    gf_combine$X <-gf_X
     gf_combine$dens_inputs <- dens
   class(gf_combine) <- c("combinedBootstrapGF", "list")
 
