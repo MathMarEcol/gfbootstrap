@@ -741,25 +741,33 @@ combinedBootstrapGF <- function(...,
     names(dens) <- gf_names
 
   rm(gf_list)
-    gf_combine <- future.apply::future_lapply(combin_list, function(gf_set, gf_X, dens, nbin, method, standardize) {
+    gf_combine <- lapply(combin_list, function(gf_set, gf_X, dens, nbin, method, standardize) {
         for (gf in seq_along(gf_set)) {
 
         gf_set[[gf]]$dens <- dens[[gf]]
         gf_set[[gf]]$X <- gf_X[[gf]]
       }
+        return(future::future(
+        {
+          gf_set$nbin <- nbin
+          gf_set$method <- method
+          gf_set$standardize <- standardize
+          gf_combined <- do.call(gradientForest::combinedGradientForest,
+            args = gf_set
+          )
+          gf_combined$X <- NULL
+          dens_c <- gf_combined$dens$Combined
+          gf_combined$dens <- list(Combined = dens_c)
 
-      gf_set$nbin <- nbin
-      gf_set$method <- method
-      gf_set$standardize <- standardize
-      gf_combined <- do.call(gradientForest::combinedGradientForest,
-                             args = gf_set
-                             )
-      gf_combined$X <- NULL
-      dens_c <- gf_combined$dens$Combined
-      gf_combined$dens <- list(Combined = dens_c)
+          gf_combined
+        },
+        globals = c("gf_set"),
+         seed = TRUE
+       ))
 
-    return(gf_combined)
-    }, nbin = nbin, method = method, standardize = standardize, gf_X = gf_X, dens = dens, future.globals = FALSE, future.seed = TRUE)
+    }, nbin = nbin, method = method, standardize = standardize, gf_X = gf_X, dens = dens
+    )
+    gf_combine <- lapply(gf_combine, future::value)
 
   rm(combin_list)
   ##calculate the new offsets
