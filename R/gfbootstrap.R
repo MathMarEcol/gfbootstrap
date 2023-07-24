@@ -322,7 +322,6 @@ gfbootstrap_dist <- function(
     ## For each predictor, generate a distance long-form distance matrix between gf objects
   offsets_m <- as.matrix(offsets)
   d_ij_pred <- lapply(seq_along(pred_vars), function(pred, gf_predictions_list, d_ij_diag, offsets_m, x_samples) {
-    future::future({
       dist_est <- apply(d_ij_diag, 1,  function(ind, pred, gf_predictions_list, offsets_m, x_samples) {
         i <- ind[1]
         j <- ind[2]
@@ -338,9 +337,7 @@ gfbootstrap_dist <- function(
       rownames(d_ij_dist) <- NULL
 
       return(d_ij_dist)
-      }, globals = c("d_ij_diag", "pred", "gf_predictions_list", "offsets_m", "x_samples"))
   }, gf_predictions_list = gf_predictions_list, d_ij_diag = d_ij_diag, offsets_m = offsets_m, x_samples = x_samples)
-  d_ij_pred <- lapply(d_ij_pred, future::value)
     names(d_ij_pred) <- pred_vars
 
     ## Simple align to first curve
@@ -684,7 +681,8 @@ combinedBootstrapGF <- function(...,
                                 method = 2,
                                 standardize = c("before", "after")[1],
                                 weight=c("uniform","species","rsq.total","rsq.mean","site","site.species","site.rsq.total","site.rsq.mean")[3],
-                                combin = NULL
+                                combin = NULL,
+                                batch_size = 50
                                 ) {
   ##... are all the GF objects
 
@@ -741,33 +739,38 @@ combinedBootstrapGF <- function(...,
     names(dens) <- gf_names
 
   rm(gf_list)
-    gf_combine <- lapply(combin_list, function(gf_set, gf_X, dens, nbin, method, standardize) {
-        for (gf in seq_along(gf_set)) {
-
-        gf_set[[gf]]$dens <- dens[[gf]]
-        gf_set[[gf]]$X <- gf_X[[gf]]
-      }
-        return(future::future(
+    batch_ind <- rep(seq.int(combin_list), length.out = length(combin_list), each = batch_size)
+    gf_combine_batch <- lapply(unique(batch_ind), function(b, batch_ind, combin_list, gf_X, dens, nbin, method, standardize) {
+        combin_sub <- combin_list[batch_ind == b]
+        future::future(
         {
-          gf_set$nbin <- nbin
-          gf_set$method <- method
-          gf_set$standardize <- standardize
-          gf_combined <- do.call(gradientForest::combinedGradientForest,
-            args = gf_set
-          )
-          gf_combined$X <- NULL
-          dens_c <- gf_combined$dens$Combined
-          gf_combined$dens <- list(Combined = dens_c)
+            gf_combine <- lapply(combin_sub, function(gf_set, gf_X, dens, nbin, method, standardize) {
+                for (gf in seq_along(gf_set)) {
+                    gf_set[[gf]]$dens <- dens[[gf]]
+                    gf_set[[gf]]$X <- gf_X[[gf]]
+                }
 
-          gf_combined
+                gf_set$nbin <- nbin
+                gf_set$method <- method
+                gf_set$standardize <- standardize
+                gf_combined <- do.call(gradientForest::combinedGradientForest,
+                                       args = gf_set
+                                       )
+                gf_combined$X <- NULL
+                dens_c <- gf_combined$dens$Combined
+                gf_combined$dens <- list(Combined = dens_c)
+
+                return(gf_combined)
+            }, nbin = nbin, method = method, standardize = standardize, gf_X = gf_X, dens = dens)
+            return(gf_combine)
         },
-        globals = c("gf_set"),
-         seed = TRUE
-       ))
+        seed = TRUE,
+        globals = list(combin_sub = combin_sub, nbin = nbin, method = method, standardize = standardize, gf_X = gf_X, dens = dens)
+        )
+    }, combin_list = combin_list, batch_ind = batch_ind, nbin = nbin, method = method, standardize = standardize, gf_X = gf_X, dens = dens)
+    gf_combine_batch <- lapply(gf_combine_batch, future::value)
 
-    }, nbin = nbin, method = method, standardize = standardize, gf_X = gf_X, dens = dens
-    )
-    gf_combine <- lapply(gf_combine, future::value)
+    gf_combine <- do.call(c, gf_combine_batch)
 
   rm(combin_list)
   ##calculate the new offsets
