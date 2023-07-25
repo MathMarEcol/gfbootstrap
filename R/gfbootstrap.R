@@ -975,7 +975,7 @@ bootstrap_predict_common <- function(object,
     stop(paste("the following predictors are not in any of the bootstrapGradientForests:\n\t",badnames,sep=""))
   }
 
-   offsets <-  gfbootstrap:::get_offsets(gf_boot)
+   offsets <-  gfbootstrap:::get_offsets(object)
 
 
 
