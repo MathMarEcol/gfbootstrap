@@ -1110,11 +1110,11 @@ get_offsets <- function(gf_boot) {
     K <- length(gf_boot$gf_list)
 
    if(hasName(gf_boot, "offsets") && !is.null(gf_boot$offsets)){
-    assertthat::assert_that(nrow(offsets) == K)
-    assertthat::assert_that(ncol(offsets) == P)
+    assertthat::assert_that(nrow(gf_boot$offsets) == K)
+    assertthat::assert_that(ncol(gf_boot$offsets) == P)
     ## Will be true if offsets was created by
     ## this function earlier
-    assertthat::assert_that(all(names(offsets) == pred_vars))
+    assertthat::assert_that(all(names(gf_boot$offsets) == pred_vars))
     return(gf_boot$offsets)
    } else {
        offsets <- matrix(
