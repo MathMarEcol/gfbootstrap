@@ -305,7 +305,7 @@ gfbootstrap_dist <- function(
         } else {
             return(m)
         }
-      }, pred = pred, gf_predictions_list = gf_predictions_list, offsets = offsets_m, x_samples = x_samples)
+      }, pred = pred, gf_predictions_list = gf_predictions_list, offsets_m = offsets_m, x_samples = x_samples)
 
       d_ij_dist <- cbind(d_ij_diag, dist_est)
 
