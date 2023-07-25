@@ -208,25 +208,9 @@ gfbootstrap_dist <- function(
   assertthat::assert_that(any("gradientForest" %in% class(gf_list[[1]]),
                               "combinedGradientForest" %in% class(gf_list[[1]])))
   pred_vars <- pred_names(gf_boot)
-  P <- length(pred_vars)
   K <- length(gf_list)
 
-  if(hasName(gf_boot, "offsets") && !is.null(gf_boot$offsets)){
-    offsets <- gf_boot$offsets
-    assertthat::assert_that(nrow(offsets) == K)
-    assertthat::assert_that(ncol(offsets) == P)
-    ## Will be true if offsets was created by
-    ## this function earlier
-    assertthat::assert_that(all(names(offsets) == pred_vars))
-  } else {
-    offsets <- matrix(
-      rep.int(0, K*P),
-      nrow = K,
-      ncol = P
-    )
-    offsets <- as.data.frame(offsets)
-    names(offsets) <- pred_vars
-  }
+  offsets <- gfbootstrap:::get_offsets(gf_boot)
 
   gf_pred_cross <- expand.grid(seq_along(gf_list), pred_vars)
   names(gf_pred_cross) <- c("gf", "pred")
@@ -1000,19 +984,25 @@ bootstrap_predict_common <- function(object,
     stop(paste("the following predictors are not in any of the bootstrapGradientForests:\n\t",badnames,sep=""))
   }
 
+   offsets <-  gfbootstrap:::get_offsets(gf_boot)
+
+
+
       ## get all predictions
       newdata_stacked <- stack(newdata)
 		gf_predictions_list <- lapply(
 							seq.int(length(object$gf_list)),
-							function(i, gf, newdata, newdata_stacked, pred_vars, extrap, offsets) {
-									if(class(gf[[i]])[1] == "combinedGradientForest"){
-											gf_preds <- names(gf[[i]]$CU)
-									} else if(class(gf[[i]])[1] == "gradientForest"){
-											gf_preds <- as.character(unique(gf[[i]]$res$var))
+        function(i, gf, newdata, newdata_stacked, pred_vars, extrap, offsets, dens) {
+            gf_local <- gf[[i]]
+            gf_local$dens <- dens
+									if(class(gf_local)[1] == "combinedGradientForest"){
+											gf_preds <- names(gf_local$CU)
+									} else if(class(gf_local)[1] == "gradientForest"){
+											gf_preds <- as.character(unique(gf_local$res$var))
 									}
-									gf_predictions <-  predict(gf[[i]], newdata[ , gf_preds], extrap = extrap)
+            gf_predictions <-  predict(gf_local, newdata[ , gf_preds], extrap = extrap)
 									missing_preds <- setdiff(pred_vars, gf_preds)
-									full_prediction <- as.data.frame(lapply(pred_vars, function(pred, missing_preds, gf_predictions, offsets) {
+									full_prediction <- as.data.frame(lapply(pred_vars, function(pred, i, missing_preds, gf_predictions, offsets) {
 											if(pred %in% missing_preds) {
 													return(stats::setNames(list(rep(NA, length.out = nrow(gf_predictions))),
 																								 nm = pred)
@@ -1116,6 +1106,34 @@ bootstrap_predict_common <- function(object,
   }
 
   return(out)
+}
+
+#' Internal function
+#' Return the offsets of a bootstrapGF or combinedboottrapGF object
+#' Generate offsets of all 0 if no offset has been assigned yet.
+get_offsets <- function(gf_boot) {
+    pred_vars <- gfbootstrap::pred_names(gf_boot)
+
+    P <- length(pred_vars)
+    K <- length(gf_boot$gf_list)
+
+   if(hasName(gf_boot, "offsets") && !is.null(gf_boot$offsets)){
+    assertthat::assert_that(nrow(offsets) == K)
+    assertthat::assert_that(ncol(offsets) == P)
+    ## Will be true if offsets was created by
+    ## this function earlier
+    assertthat::assert_that(all(names(offsets) == pred_vars))
+    return(gf_boot$offsets)
+   } else {
+       offsets <- matrix(
+           rep.int(0, K*P),
+           nrow = K,
+           ncol = P
+       )
+       offsets <- as.data.frame(offsets)
+       names(offsets) <- pred_vars
+       return(offsets)
+    }
 }
 
 #' Get variable importance from a bootstrap Gradient Forest
