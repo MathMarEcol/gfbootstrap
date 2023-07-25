@@ -170,7 +170,7 @@ bootstrapGradientForest <- function(
   ##Calculate offsets
     ##the optimal offset requires knowing the distance between curves for every tree in gfbootstrap
     ##
-  df_dist <- gfbootstrap:::gfbootstrap_dist(out,
+  df_dist <- gfbootstrap::gfbootstrap_dist(out,
                               x_samples = 100)
   out$offsets <- df_dist# gfbootstrap:::gfbootstrap_offsets(df_dist)
 
@@ -280,57 +280,44 @@ gfbootstrap_dist <- function(
                                            pred = gf_predictions_list$pred[gf_subset])
               unstack(gf_pred_subset, y ~ pred)
               }, gf_predictions_list = gf_predictions_list_predict)
-  ##generate pairs
-  d_ij <- expand.grid(i = seq.int(K), j = seq.int(K))
 
-  d_ij_diag <- as.matrix(d_ij[d_ij$i < d_ij$j, ])
-
-
-    ## Align to gf object that does not have any predictors
-    ## with all NA
-    baseline <- which(vapply(gf_predictions_list,
-           function(gf_pred) {
-               all(
-                   vapply(gf_pred,
-                          function(pred_vec){
-                              !all(is.na(pred_vec))
-                          }, logical(1))
-                   )}, logical(1)))[1]
-
-    ## Simple align to first curve.
-    d_ij_diag <- as.matrix(d_ij[d_ij$i == baseline, ])
+  ## Find a baseline for each predictor
+  ## The baseline will be a bootstrap index for
+  ## that predictor.
+  pred_baseline <- sapply(pred_vars, function(pred, gf_predictions_list){
+    real_values <- vapply(gf_predictions_list, function(pred_vec, pred) {
+      sum(!is.na(pred_vec[[pred]]))
+    }, integer(1), pred = pred)
+    if (all(real_values == 0)) {
+      stop(paste0("Predictor ", pred,
+                  " had no non-na values while finding offsets"))
+    }
+    baseline <- which.max(real_values)
+    return(baseline)
+    }, gf_predictions_list = gf_predictions_list)
 
 
     ## For each predictor, generate a distance long-form distance matrix between gf objects
   offsets_m <- as.matrix(offsets)
-  d_ij_pred <- lapply(pred_vars, function(pred, gf_predictions_list, d_ij_diag, offsets_m, x_samples) {
-      dist_est <- apply(d_ij_diag, 1,  function(ind, pred, gf_predictions_list, offsets_m, x_samples) {
-        i <- ind[1]
-        j <- ind[2]
-        gf_i <- gf_predictions_list[[i]][[pred]]
-        gf_j <- gf_predictions_list[[j]][[pred]]
-        d_vec <- (gf_i + rep(offsets_m[i, pred], x_samples)) -
-            (gf_j + rep(offsets_m[j, pred], x_samples))
+  d_ij_pred <- lapply(pred_vars, function(pred, gf_predictions_list, offsets_m, x_samples, pred_baseline) {
+      dist_est <- vapply(seq_along(gf_predictions_list), function(ind, pred, gf_predictions_list, offsets_m, x_samples, pred_baseline) {
+        gf_i <- gf_predictions_list[[pred_baseline[[pred]]]][[pred]]
+        gf_j <- gf_predictions_list[[ind]][[pred]]
+        d_vec <- (gf_i + rep(offsets_m[pred_baseline[[pred]], pred], x_samples)) -
+            (gf_j + rep(offsets_m[ind, pred], x_samples))
         m <- mean(d_vec, na.rm = TRUE)
         if(is.nan(m)){
             return(0)
         } else {
             return(m)
         }
-      }, pred = pred, gf_predictions_list = gf_predictions_list, offsets_m = offsets_m, x_samples = x_samples)
-
-      d_ij_dist <- cbind(d_ij_diag, dist_est)
-
-      rownames(d_ij_dist) <- NULL
-
-      return(d_ij_dist)
-  }, gf_predictions_list = gf_predictions_list, d_ij_diag = d_ij_diag, offsets_m = offsets_m, x_samples = x_samples)
+      }, numeric(1), pred = pred, gf_predictions_list = gf_predictions_list, offsets_m = offsets_m, x_samples = x_samples, pred_baseline = pred_baseline)
+      return(dist_est)
+  }, gf_predictions_list = gf_predictions_list,  offsets_m = offsets_m, x_samples = x_samples, pred_baseline = pred_baseline)
     names(d_ij_pred) <- pred_vars
 
     ## Simple align to first curve
-    d_ij_pred <- as.data.frame(lapply(d_ij_pred, function(pr) {
-      as.vector(pr[, 3])
-    }))
+    d_ij_pred <- as.data.frame(d_ij_pred)
 
   return(d_ij_pred)
 
