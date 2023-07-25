@@ -269,31 +269,17 @@ gfbootstrap_dist <- function(
   newdata_df <- as.data.frame(newdata_df)
 
   ## Generate predictions
-  gf_predictions_list <- lapply(gf_list, function(gf, newdata_df, pred_vars, gf_dens) {
-    gf$dens <- gf_dens
 
-    if(class(gf)[1] == "combinedGradientForest"){
-      gf_preds <- names(gf$CU)
-    } else if(class(gf)[1] == "gradientForest"){
-      gf_preds <- as.character(unique(gf$res$var))
-    }
-    gf_predictions <-  predict(gf, newdata_df[ , gf_preds], extrap = NA)
-    missing_preds <- setdiff(pred_vars, gf_preds)
-    full_prediction <- as.data.frame(lapply(pred_vars, function(pred, missing_preds, gf_predictions) {
-      if(pred %in% missing_preds) {
-        return(stats::setNames(list(rep(NA, length.out = nrow(gf_predictions))),
-                               nm = pred)
-               )
-      } else {
-        return(stats::setNames(list(gf_predictions[, pred]),
-                               nm = pred)
-               )
-       }
-      } , missing_preds = missing_preds, gf_predictions))
+    gf_predictions_list_predict <- predict(gf_boot, newdata_df, type = c("points"), extrap = NA, avoid_copy = TRUE)
 
-    return(full_prediction)
-	}, newdata_df = newdata_df, pred_vars = pred_vars, gf_dens = gf_dens)
-
+    ## Unstack predictions
+    gf_predictions_list <- lapply(sort(unique(gf_predictions_list_predict$gf)),
+          function(gf, gf_predictions_list){
+              gf_subset <- gf_predictions_list$gf == gf
+              gf_pred_subset <- data.frame(y = gf_predictions_list$y[gf_subset],
+                                           pred = gf_predictions_list$pred[gf_subset])
+              unstack(gf_pred_subset, y ~ pred)
+              }, gf_predictions_list = gf_predictions_list_predict)
   ##generate pairs
   d_ij <- expand.grid(i = seq.int(K), j = seq.int(K))
 
@@ -305,15 +291,20 @@ gfbootstrap_dist <- function(
 
     ## For each predictor, generate a distance long-form distance matrix between gf objects
   offsets_m <- as.matrix(offsets)
-  d_ij_pred <- lapply(seq_along(pred_vars), function(pred, gf_predictions_list, d_ij_diag, offsets_m, x_samples) {
+  d_ij_pred <- lapply(pred_vars, function(pred, gf_predictions_list, d_ij_diag, offsets_m, x_samples) {
       dist_est <- apply(d_ij_diag, 1,  function(ind, pred, gf_predictions_list, offsets_m, x_samples) {
         i <- ind[1]
         j <- ind[2]
-        gf_i <- gf_predictions_list[[i]][ , pred]
-        gf_j <- gf_predictions_list[[j]][ , pred]
+        gf_i <- gf_predictions_list[[i]][[pred]]
+        gf_j <- gf_predictions_list[[j]][[pred]]
         d_vec <- (gf_i + rep(offsets_m[i, pred], x_samples)) -
-          (gf_j + rep(offsets_m[j, pred], x_samples))
-        return(mean(d_vec, na.rm = TRUE))
+            (gf_j + rep(offsets_m[j, pred], x_samples))
+        m <- mean(d_vec, na.rm = TRUE)
+        if(is.nan(m)){
+            return(0)
+        } else {
+            return(m)
+        }
       }, pred = pred, gf_predictions_list = gf_predictions_list, offsets = offsets_m, x_samples = x_samples)
 
       d_ij_dist <- cbind(d_ij_diag, dist_est)
