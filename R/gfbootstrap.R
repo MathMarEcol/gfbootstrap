@@ -285,8 +285,20 @@ gfbootstrap_dist <- function(
 
   d_ij_diag <- as.matrix(d_ij[d_ij$i < d_ij$j, ])
 
+
+    ## Align to gf object that does not have any predictors
+    ## with all NA
+    baseline <- which(vapply(gf_predictions_list,
+           function(gf_pred) {
+               all(
+                   vapply(gf_pred,
+                          function(pred_vec){
+                              !all(is.na(pred_vec))
+                          }, logical(1))
+                   )}, logical(1)))[1]
+
     ## Simple align to first curve.
-    d_ij_diag <- as.matrix(d_ij[d_ij$i == 1, ])
+    d_ij_diag <- as.matrix(d_ij[d_ij$i == baseline, ])
 
 
     ## For each predictor, generate a distance long-form distance matrix between gf objects
