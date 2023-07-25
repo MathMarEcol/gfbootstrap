@@ -1014,7 +1014,8 @@ bootstrap_predict_common <- function(object,
 																								 nm = pred)
 																 )
 											}
-									} , missing_preds = missing_preds, gf_predictions, offsets))
+									} , i = i, missing_preds = missing_preds, gf_predictions, offsets = offsets))
+
 
 									full_pred_stacked <- stack(full_prediction)
 									names(full_pred_stacked) <- c("y", "pred")
@@ -1024,7 +1025,7 @@ bootstrap_predict_common <- function(object,
 									full_pred_stacked$x <- newdata_stacked$value
 
 									return(full_pred_stacked)
-							}, newdata = newdata, newdata_stacked = newdata_stacked, pred_vars = pred_vars, extrap = extrap, gf = object$gf_list, offsets = object$offsets)
+							}, newdata = newdata, newdata_stacked = newdata_stacked, pred_vars = pred_vars, extrap = extrap, gf = object$gf_list, offsets = offsets, dens = object$dens)
 
 		n_total <- sum(vapply(gf_predictions_list, nrow, integer(1)))
 
