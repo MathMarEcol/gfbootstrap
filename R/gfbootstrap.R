@@ -92,7 +92,7 @@ bootstrapGradientForest <- function(
     while(!valid_model & tries < max_retries){
       if(tries > 1) message(paste0("GF model failed to fit. Restarting. i: [", i, "], try: ", tries))
       gf_list <-  tryCatch({
-        res <- gradientForest::gradientForest(data = x,
+        gradientForest::gradientForest(data = x,
                                                 predictor.vars=predictor.vars,
                                                 response.vars=response.vars,
                                                 ntree = 1,
@@ -104,8 +104,6 @@ bootstrapGradientForest <- function(
                                                 nbin=nbin,
                                                 trace=trace
                                                 )
-        res$X <- NULL
-        return(res)
       }, error = function(e){
         message(paste0("GF model failed to fit, restarting: ", conditionMessage(e)))
         return(NULL)
@@ -152,6 +150,7 @@ bootstrapGradientForest <- function(
   for (i in seq_along(gf_bootstrap)) {
     gf_bootstrap[[i]]$dens <- NULL
     gf_bootstrap[[i]]$call <- NULL
+    gf_bootstrap[[i]]$X <- NULL
   }
   ##The offsets are applied to the cumimp curves,
   ##but the cumimp curves are calculated
