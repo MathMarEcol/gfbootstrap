@@ -107,10 +107,7 @@ bootstrapGradientForest <- function(
       }, error = function(e){
         message(paste0("GF model failed to fit, restarting: ", conditionMessage(e)))
         return(NULL)
-    }, warning = function(e){
-      message(paste0("GF model failed to fit, restarting: ", conditionMessage(e)))
-      return(NULL)
-    })
+      })
 
       if(is.null(gf_list)){
         tries <- tries + 1
