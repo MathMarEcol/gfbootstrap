@@ -23,6 +23,7 @@
 #' @param response.vars columns in x that are responses
 #' @param nboostraps number of bootstrapped models to fit
 #' @param nsamples number of samples taken at each bootstrapped model fit
+#' @param trees_per_iter number of trees for each bootstrapped model
 #'
 #' see gradientForest::gradientForest() for mtry, transform, maxLevel, corr.threshold, compact, nbin, trance parameters
 #'
@@ -57,7 +58,8 @@ bootstrapGradientForest <- function(
                         compact=FALSE,
                         nbin=101,
                         max_retries = 10,
-                        trace=FALSE
+                        trace=FALSE,
+                        trees_per_iter = 10
 ) {
   if(!require(gradientForest)){
     stop("gfbootstrap requires the gradientForest package. Please install it from https://r-forge.r-project.org/R/?group_id=973")
@@ -78,7 +80,8 @@ bootstrapGradientForest <- function(
                         compact,
                         nbin,
                         max_retries,
-                        trace
+                        trace,
+                        trees_per_iter
                                                                      ){
 
     ##Fit GF with a single tree, but otherwise identical calls.
@@ -95,7 +98,7 @@ bootstrapGradientForest <- function(
         gradientForest::gradientForest(data = x,
                                                 predictor.vars=predictor.vars,
                                                 response.vars=response.vars,
-                                                ntree = 1,
+                                                ntree = trees_per_iter,
                                                 mtry=mtry,
                                                 transform=transform,
                                                 maxLevel=maxLevel,
@@ -135,7 +138,8 @@ bootstrapGradientForest <- function(
                         compact = compact,
                         nbin = nbin,
                         max_retries = max_retries,
-                        trace = trace
+                        trace = trace,
+                        trees_per_iter = trees_per_iter
   )
 
   if (any(vapply(gf_bootstrap, is.null, logical(1)))){
