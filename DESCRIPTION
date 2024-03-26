@@ -6,8 +6,8 @@ Authors@R:
            family = "Dyer",
            role = c("aut", "cre"),
            email = "philip.dyer1@uqconnect.edu.au")
-Description: The base Gradient Forest package does not 
-License: What license it uses
+Description: Bootstrapping for Gradient Forest
+License: GPL-3
 Encoding: UTF-8
 LazyData: true
 Depends:

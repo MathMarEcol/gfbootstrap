@@ -1,3 +1,6 @@
+# Copyright 2017-2024 Philip Dyer
+# SPDX-License-Identifier: GPL-3.0-only
+
 #' Generate a bootstrapped GF object
 #'
 #' The bootstrapped GF object is bootstrapped by fitting many GF models, each with a single tree.
